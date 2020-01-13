@@ -35,13 +35,13 @@ kernel = function(t1, t2, theta = list(1, 0.2))
 }
 
 kern_to_cov = function(x, kern = kernel, theta = list(1, 0.2))
-{ ## x : vector or tibble of all timestamps for each indivicuals (input vector). 2 columns, 'ID' and 'Timestamp' required
+{ ## x : vector or tibble of all timestamps for each individuals (input vector). 2 columns, 'ID' and 'Timestamp' required
   ## kern : indicates which kernel function to use to compute the covariance matrix
   ## theta : list of the required hyperparameters
   ####
   ## return : list of inverse covariance matrices (1 by individual) of the input vectors according to kernel() function
   
-  ## If user use ker_to_cov() directly with a observations vector for one individual
+  ## If user uses kern_to_cov() directly with an observation's vector for one individual
   if(is.vector(x))
   { mat = sapply(x, function(t) sapply(x, function(s) kernel(t, s, theta = theta)))
     if(mat %>% dim() %>% is.null()){mat = as.matrix(mat)}
@@ -77,13 +77,13 @@ kern_to_cov = function(x, kern = kernel, theta = list(1, 0.2))
 }
 
 kern_to_inv = function(x, kern = kernel, theta = list(1, 0.2))
-{ ## x : vctor or tibble of all timestamps for each indivicuals (input vector). 2 columns, 'ID' and 'Age' required
+{ ## x : vector or tibble of all timestamps for each individuals (input vector). 2 columns, 'ID' and 'Age' required
   ## kern : indicates which kernel function to use to compute the covariance matrix
   ## theta : list of the required hyperparameters
   ####
   ## return : list of inverse covariance matrices (1 by individual) of the input vectors according to kernel()
   
-  ## If user use ker_to_inv() directly with an observations vector for one individual
+  ## If user uses kern_to_inv() directly with an observation's vector for one individual
   if(is.vector(x))
   { 
     mat = sapply(x, function(t) sapply(x, function(s) kernel(t, s, theta = theta))) %>% solve()
@@ -121,15 +121,10 @@ kern_to_inv = function(x, kern = kernel, theta = list(1, 0.2))
 ###############################
 
 ##### LOGLIKELIHOOD FUNCTIONS ####
-logL_i = function(y = , t = , theta_i = , sigma = , kern = kernel)
+logL = function(y = , t = , theta_i = , sigma = , kern = kernel)
 {
   cov = kern_to_cov(t, kern = kern, theta = theta_i)
   return(-1/2 * t(y) %*% solve(cov) %*% y - 1/2 %*% det(cov) )
-}
-
-logL_0 = function(obs = , theta_0)
-{
-  
 }
 ###############################
 

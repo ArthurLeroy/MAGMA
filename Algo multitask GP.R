@@ -75,21 +75,23 @@ training = function(data = db, prior_mean, theta_0_0 = 1, theta_i_0 = 1, sigma_0
   for(i in list_ID)
   {
     theta_i = theta_i_0
+    theta_0 = theta_0_0
+    sigma = sigma_0
     y_i = data %>% filter(ID == i) %>% pull(Output)
     t_i = data %>% filter(ID == i) %>% pull(Timestamp)
     
     for(in in 1:n_loop_max)
     {
-      param = e_step_GP(theta = theta_i_0)
-      new_theta_i = m_step_GP(mean = param[mean], inv = param[inv])
+      param = e_step_GP(theta_i, theta_0, sigma)
+      new_hp = m_step_GP(mean = param$mean, inv = param$inv)
       
-      eps = logL_i(y = y_i, t = t_i, theta_i = new_theta_i, sigma = new_sigma) - 
-            logL_i(y= y_i, t = t_i , theta_i = theta_i , sigma = sigma )
-      if(eps < 1e-5){break}
-      theta_i = new_theta_i
+      eps = logL(y = y_i, t = t_i, theta_0 = new_param$theta_0, theta_i = new_hp$theta_i, sigma = new_hp$sigma) - 
+            logL(y= y_i, t = t_i , theta_0 = param$theta_0, theta_i = hp$theta_i , sigma = hp$sigma )
+      if(eps > 0 & eps < 1e-5){break}
+      if(eps > 0){hp = new_hp}
     }
   }
-  return(list('trained_sigma' = sigma,'trained_theta' = theta,  'list_trained_theta_i' = list_theta_i, 
+  return(list('trained_sigma' = sigma,'trained_theta_0' = theta_0,  'list_trained_theta_i' = list_theta_i, 
               'list_weigthed_values_i' = list_weighted_values_i, 'list_inv_i' = list_inv_i)) 
 }
 ######################################################
@@ -136,6 +138,7 @@ pred_gp = function(data = db_obs, timestamps = 10:21, mean_mu = NULL , cov_mu = 
   
   input_t = paste0('X', timestamps)
   all_times = c(tn,timestamps)
+    
   if(is.null(cov_mu))
   {
     cov_mu = matrix(0, length(all_times), length(all_times),
@@ -144,13 +147,14 @@ pred_gp = function(data = db_obs, timestamps = 10:21, mean_mu = NULL , cov_mu = 
   if(is.null(mean_mu)){mean_mu = matrix(0, length(all_times), 1, dimnames = list(paste0('X', all_times)))}
   if(length(mean_mu) == 1){mean_mu = matrix(mean_mu, length(all_times), 1, dimnames = list(paste0('X', all_times)))}
   
-  inv_mat = (kern_to_cov(x = tn, kern = kern, theta = theta) + cov_mu[input, input]) %>% solve()
-  cov_tn_t = sapply(timestamps, function(x) kern(x,tn, theta = theta)) + cov_mu[input,input_t]
-  cov_t_t = sapply(timestamps, function(x) kern(x,timestamps, theta = theta)) + cov_mu[input_t ,input_t]
+  inv_mat = (kern_to_cov(tn, kern,  theta) + cov_mu[input, input] + diag(sigma, length(tn))) %>% solve()
+  cov_tn_t = sapply(timestamps, function(x) kern(x,tn, theta)) + cov_mu[input,input_t]
+  cov_t_t = sapply(timestamps, function(x) kern(x,timestamps, theta)) + cov_mu[input_t ,input_t] + 
+            diag(sigma, length(timestamps))
   
   pred = tibble('Timestamp' = timestamps,
                 'Mean' = mean_mu[input_t,] + t(cov_tn_t) %*% inv_mat %*% (yn - mean_mu[input,]) %>% as.vector,
-                'Var' = (cov_t_t - t(cov_tn_t) %*% inv_mat %*% cov_tn_t + sigma) %>% diag())
+                'Var' = (cov_t_t - t(cov_tn_t) %*% inv_mat %*% cov_tn_t) %>% diag())
   return(pred)
 }
 
@@ -167,13 +171,17 @@ plot_gp = function(pred_gp, data = NULL)
          geom_ribbon(data = pred_gp, aes(x = Timestamp, ymin = Mean - 1.96* sqrt(Var), 
                                          ymax = Mean +  1.96* sqrt(Var)), alpha = 0.2)
   
-  if(!is.null(data))
-  {gg = gg + geom_point(data = data, aes(x = Timestamp, y = Output), shape = 4, color = 'red')}
+  if(!is.null(data)){gg = gg + geom_point(data = data, aes(x = Timestamp, y = Output), shape = 4, color = 'red')}
   return(gg)
 }
 ######################################################
 
 ################ APPLICATION #########################
+## Test graph
+pred_gp(db %>% filter(ID == 1), timestamps = seq(9,21, 0.03) , mean_mu = 50) %>% 
+  plot_gp(data = db %>% filter(ID == 1))
+
+
 full_algo = function()
 {
   
