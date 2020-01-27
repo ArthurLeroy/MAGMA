@@ -95,17 +95,19 @@ fn<- function (x, db = db_test, kern = kernel)
                    kern_to_cov(db$Timestamp, kern, theta = x), log = T))
 }
 
+
 t = 10:20
 db_test = tibble('Timestamp' = t, 
                  'Input' = paste0('X', t),
-                 'Output' = rmvnorm(1, rep(0,length(t)), kern_to_cov(t, kernel, theta = log(c(15,5, 0.5)))) %>% as.vector())
+                 'Output' = rmvnorm(1, rep(0,length(t)), kern_to_cov(t, kernel, theta = c(2,1, 0.5))) %>% as.vector())
 
 meth0 <- c("Nelder-Mead", "BFGS", "L-BFGS-B")
-st0 <- c(10, 5, 1.5) %>% log() # the standard start
-result0 <- opm(st0, fn, method= meth0) 
-summary(result0, order=value)
+st0 <- c(5, 5, 0.5) %>% log() # the standard start
+result0 <- opm(st0, fn, method= meth0)
+result0 = summary(result0, order=value)
+result0
 
-pred_gp(db_test, timestamps = seq(9,21, 0.03), theta = c(result0$p1[1], result0$p1[2], result0$p1[3])) %>% 
+pred_gp(db_test, timestamps = seq(9,21, 0.03), theta = c(result0$p1[1], result0$p2[1], result0$p3[1])) %>% 
   plot_gp(data = db_test)
 
 

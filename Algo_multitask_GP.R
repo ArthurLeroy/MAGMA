@@ -45,7 +45,7 @@ db = rbind(simu_indiv(10, 1, 11, 20, -1, 60, 2),
            simu_indiv(10, 4, 11, 20, -0.8, 65, 2),
            simu_indiv(10, 5, 11, 20, -0.6, 55, 2))
 
-db_obs = simu_indiv(10, 6, 11, 20, -1.4, 55, 2)
+db_obs = simu_indiv(10, 6, 11, 20, -1.4, 54, 2)
 
 ################ INITIALISATION ######################
 theta_0_0 = 1
@@ -170,8 +170,8 @@ plot_gp = function(pred_gp, data = NULL)
 
 ################ APPLICATION #########################
 ## Test graph
-pred_gp(db_obs %>% filter(Timestamp %in% 11:20), timestamps = seq(9,21, 0.03), mean_mu = 50,
-        theta = c(10,5,0.5)) %>%  plot_gp(data = db_obs)
+pred_gp(db_obs %>% filter(Timestamp %in% 11:20), timestamps = seq(10,20, 0.03), mean_mu = 50,
+        theta = c(3,0.4,0.2)) %>%  plot_gp(data = db_obs)
 
 
 full_algo = function()
