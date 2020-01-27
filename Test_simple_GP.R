@@ -76,9 +76,9 @@ gr_fn = function(x, db = db_obs)
   
   g_1 = (-1/2 * cste_term %*% kern_to_inv(t, deriv1, as.list(x))) %>%  diag() %>% sum()
   g_2 = (-1/2 * cste_term %*% kern_to_inv(t, deriv2, as.list(x))) %>%  diag() %>% sum()
-  #g_3 = (-1/2 * cste_term %*% kern_to_inv(t, deriv3, as.list(x))) %>%  diag() %>% sum()
+  g_3 = (-1/2 * cste_term %*% kern_to_inv(t, deriv3, as.list(x))) %>%  diag() %>% sum()
   
-  grad = c(g_1, g_2)
+  grad = c(g_1, g_2, g_3)
   return(grad)
 }
 
@@ -103,7 +103,7 @@ db_test = tibble('Timestamp' = t,
 
 meth0 <- c("Nelder-Mead", "BFGS", "L-BFGS-B")
 st0 <- c(5, 5, 0.5) %>% log() # the standard start
-result0 <- opm(st0, fn, method= meth0)
+result0 <- opm(st0, fn, method= meth0, gr = gr_fn)
 result0 = summary(result0, order=value)
 result0
 
