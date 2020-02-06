@@ -23,8 +23,8 @@ dmvnorm <- function (x, mu, inv_Sigma, log = FALSE, tol = 1e-06) {
     stop("incompatible arguments")
   eS <- eigen(inv_Sigma, symmetric = TRUE) 
   ev <- (eS$values)^(-1)
-  if (!all(ev >= -tol * abs(ev[1]))) 
-    stop("inv_Sigma is not positive definite")
+  #if (!all(ev >= -tol * abs(ev[1]))) 
+  #  stop("inv_Sigma is not positive definite")
   z <- t(x - mu)
   logdetS <- try(- determinant(inv_Sigma, logarithm = TRUE)$modulus,
                  silent=TRUE)
@@ -156,7 +156,7 @@ kern_to_inv = function(x, kern = kernel, theta = list(1, 0.5), sigma = 0.2)
 }
 
 ##### LOGLIKELIHOOD FUNCTIONS ####
-logL_GP_mod(c(2,1,0.2), db_train %>% filter(ID == 5), bla$param$mean, kernel, bla$param$cov)
+#logL_GP_mod(c(2,1,0.2), db_train %>% filter(ID == 5), bla$param$mean, kernel, bla$param$cov)
 logL_GP_mod = function(param, db, mean, kern, new_cov)
 { ## param : vector or list of parameters of the kernel with format (a, b, sigma)
   ## db : tibble containing values we want to compute logL on. Required columns : Timestamp, Output
@@ -169,7 +169,8 @@ logL_GP_mod = function(param, db, mean, kern, new_cov)
   if(length(param) == 2){param[3] = 0} ## mean GP (mu_0) is noiseless and thus has only 2 hp
 
   cov =  kern_to_cov(db$Timestamp, kern, theta = param[1:2], sigma = param[3]) 
-  inv = tryCatch(solve(cov), error = function(e){MASS::ginv(cov)}) ## fast or slow matrix inversion if singular
+  inv = solve(cov)
+  #inv = tryCatch(solve(cov), error = function(e){MASS::ginv(cov)}) ## fast or slow matrix inversion if singular
   LL_norm = - dmvnorm(db$Output, mean, inv, log = T) ## classic gaussian loglikelihood
   cor_term =  0.5 * (inv * new_cov) %>% sum() ## correction term (0.5 * Trace(inv %*% new_cov))
   #print(c(db$ID[1] ,LL_norm,cor_term))
@@ -283,7 +284,8 @@ e_step = function(db, m_0, kern_0, kern_i, hp)
   value_i = base::split(db$Output, list(db$ID))
   
   new_inv = update_inv(prior_inv = inv_0, list_inv_i = inv_i)
-  new_cov = tryCatch(solve(new_inv), error = function(e){MASS::ginv(cov)}) ## fast or slow matrix inversion if singular
+  new_cov = solve(new_inv)
+   #new_cov = tryCatch(solve(new_inv), error = function(e){MASS::ginv(cov)}) ## fast or slow matrix inversion if singular
   
   weighted_mean = update_mean(prior_mean = m_0, prior_inv = inv_0, list_inv_i = inv_i, list_value_i = value_i)
   new_mean = new_cov %*% weighted_mean %>% as.vector()
