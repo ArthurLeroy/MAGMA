@@ -16,7 +16,7 @@ db$ID = as.character(db$ID)
 ID1 = db %>% filter(ID == 5) %>% arrange(Age)
 
 ## Plot raw curves of several individuals
-plot_db = function(data = db)
+plot_db = function(db = db_train)
 {
   ggplot(db) + geom_smooth(aes(Timestamp, Output, color = ID)) + geom_point(aes(Timestamp, Output, color = ID)) 
 }
@@ -39,61 +39,60 @@ simu_indiv = function(nb, ID, tmin, tmax, a, b, var)
 }
 
 set.seed(42)
-db = rbind(simu_indiv(10, 1, 11, 20, -1, 60, 2),
-           simu_indiv(10, 2, 11, 20, -0.2, 50, 2),
-           simu_indiv(10, 3, 11, 20, -1.6, 70, 2),
-           simu_indiv(10, 4, 11, 20, -0.8, 65, 2),
+db_train = rbind(simu_indiv(10, 1, 11, 20, -1, 60, 0.2),
+           simu_indiv(10, 2, 11, 20, -0.2, 50, 0.3),
+           simu_indiv(10, 3, 11, 20, -1.6, 70, 0.5),
+           simu_indiv(10, 4, 11, 20, -0.8, 65, 1),
            simu_indiv(10, 5, 11, 20, -0.6, 55, 2))
 
-db_obs = simu_indiv(10, 6, 11, 20, -1.4, 54, 2)
+db_obs = simu_indiv(10, 6, 11, 20, -1.4, 54, 0.5)
 
 ################ INITIALISATION ######################
-theta_0_0 = 1
-theta_i_0 = 1
-sigma_0 = 1
+ini_param = list('theta_0' = c(1,1), 'theta_i' = c(1, 1, 0.2))
 timestamps = 11:20
 m_0 = 50
 
 ################ TRAINING FUNCTIONS ################## 
-training = function(data = db, prior_mean, theta_0_0 = 1, theta_i_0 = 1, sigma_0 = 1, kern = kernel)
-{ ## data : database with all individuals in training set. Column required : 'ID', Timestamp', 'Input', 'Output'
-  ## theta_i_0 : common initial value of HP for the common prior kernel of all individuals
-  ## sigma_0 : initial value of the variance of the error process
-  ## kern : kernel associated to common covariance functions of all individuals 
+training = function(db, prior_mean, ini_param, kern_0 = kernel_mu, kern_i = kernel)
+{ ## db : database with all individuals in training set. Column required : 'ID', Timestamp', 'Input', 'Output'
+  ## prior_mean : prior mean parameter of the mean GP (mu_0)
+  ## ini_param : initial values of HP for the kernels
+  ## kern_0 : kernel associated to covariance functions of the mean GP
+  ## kern_i : kernel associated to common covariance functions of all individuals GPs
   ####
-  ## return : list of trained HP, list of inv covariance matrices and weighted data points(useful in posterior_mu())
+  ## return : list of trained HP, boolean to indicate convergence
   
-  list_ID = data %>% pull(ID) %>% unique()
-  list_theta_i = list()
-  list_weighted_values_i = list()
-  list_inv_i = list()
   n_loop_max = 10
+  list_ID = unique(db$ID)
+  hp = list('theta_0' = ini_param$theta_0, 
+            'theta_i' = ini_param$theta_i %>% setNames(nm = list_ID))
+  cv = 'FALSE'
   
-  for(i in list_ID)
+  for(i in 1:n_loop_max)
   {
-    theta_i = theta_i_0
-    theta_0 = theta_0_0
-    sigma = sigma_0
-    y_i = data %>% filter(ID == i) %>% pull(Output)
-    t_i = data %>% filter(ID == i) %>% pull(Timestamp)
+    param = e_step(db, prior_mean, kern_0, kern_i, hp)   
+    print(i)
+    new_hp = m_step(db, hp, mean = param$mean, cov = param$cov, kern_0, kern_i, prior_mean)
+
+    logL_multi_GP(new_hp, db, kern_i, kern_0, param$mean, param$cov, m_0 = prior_mean) %>% print()
     
-    for(i in 1:n_loop_max)
+    logL_new = logL_multi_GP(new_hp, db, kern_i, kern_0, param$mean, param$cov, m_0 = prior_mean)
+    eps = (logL_new - logL_multi_GP(hp, db, kern_i, kern_0, param$mean, param$cov, m_0 = prior_mean)) / 
+          abs(logL_new)
+    #print(eps)
+    if(eps <= 0){stop('Likelihood descreased')}
+    if(eps > 0 & eps < 1e-3)
     {
-      param = e_step_GP(theta_i, theta_0, sigma)
-      new_hp = m_step_GP(mean = param$mean, inv = param$inv)
-      
-      eps = logL(y = y_i, t = t_i, theta_0 = new_param$theta_0, theta_i = new_hp$theta_i, sigma = new_hp$sigma) - 
-            logL(y= y_i, t = t_i , theta_0 = param$theta_0, theta_i = hp$theta_i , sigma = hp$sigma )
-      if(eps > 0 & eps < 1e-5){break}
-      if(eps > 0){hp = new_hp}
+      cv = 'TRUE'
+      break
     }
+    hp = new_hp
   }
-  return(list('trained_sigma' = sigma,'trained_theta_0' = theta_0,  'list_trained_theta_i' = list_theta_i, 
-              'list_weigthed_values_i' = list_weighted_values_i, 'list_inv_i' = list_inv_i)) 
+  return(list('theta_0' = new_hp$theta_0, 'theta_i' = new_hp$theta_i, 'convergence' = cv, 'param' = param))
 }
 
 ################ PREDICTION FUNCTIONS ################
-posterior_mu = function(data, timestamps, prior_mean, kern, theta_0, list_inv_i, list_value_i)
+posterior_mu = function(data, timestamps, prior_mean, kern, theta_0, sigma_0, list_inv_i, list_value_i)
 { ## data : matrix of data columns required ('Timestamp', 'Input', 'Output')(Input format : paste0('X', Timestamp))
   ## timestamps : timestamps on which we want a prediction
   ## prior_mean : prior mean value of the mean GP (scalar value or vector of same length as 'timestamps')
@@ -104,10 +103,12 @@ posterior_mu = function(data, timestamps, prior_mean, kern, theta_0, list_inv_i,
   ## The last two lists are supposed to be retrieved from the training to avoid recomputation of covariance matrices
   ####
   ## return : pamameters of the mean GP at timestamps
+  
+  
   if(length(prior_mean) == 1){prior_mean = rep(prior_mean, length(timestamps))}
   old_mean = matrix(prior_mean, ncol = 1, nrow = length(timestamps), dimnames = list(paste0('X', timestamps)))
   
-  prior_inv = kern_to_inv(timestamps, kern = kern, theta = theta_0)
+  prior_inv = kern_to_inv(timestamps, kern, theta = theta_0, sigma = sigma_0)
   weighted_values = update_mean(old_mean = old_mean, old_inv = prior_inv, list_value_i = list_value_i)
   
   inv_mu = update_inv(old_inv = prior_inv, list_inv_i = list_inv_i)
@@ -118,14 +119,14 @@ posterior_mu = function(data, timestamps, prior_mean, kern, theta_0, list_inv_i,
 }
 
 pred_gp = function(data = db_obs, timestamps = 10:21, mean_mu = NULL , cov_mu = NULL, 
-                   kern = kernel, theta = list(1,0.2, 0))
+                   kern = kernel, theta = list(1,0.2), sigma = 0.2) 
 { ## data: tibble of data columns required ('Timestamp', 'Input', 'Output')(Input format : paste0('X', Timestamp))
   ## timestamps : timestamps on which we want a prediction
   ## mean_mu : mean value of mean GP at timestamps (obs + pred) (matrix dim: timestamps x 1, with Input rownames)
   ## cov_mu : covariance of mean GP at timestamps (obs + pred) (square matrix, with Input row/colnames)
   ## kernel : kernel associated to the covariance function of the GP
   ## theta : list of hyperparameters for the kernel of the GP
-  ## sigma : variance of the error term of the model
+  ## sigma : variance of the error term of the models
   ####
   ## return : pamameters of the gaussian density predicted at timestamps 
   tn = data %>% pull(Timestamp)
@@ -143,14 +144,13 @@ pred_gp = function(data = db_obs, timestamps = 10:21, mean_mu = NULL , cov_mu = 
   if(is.null(mean_mu)){mean_mu = matrix(0, length(all_times), 1, dimnames = list(paste0('X', all_times)))}
   if(length(mean_mu) == 1){mean_mu = matrix(mean_mu, length(all_times), 1, dimnames = list(paste0('X', all_times)))}
   
-  inv_mat = (kern_to_cov(tn, kern,  theta) + cov_mu[input, input]) %>% solve()
-  cov_tn_t = sapply(timestamps, function(x) kern(x,tn, theta)) + cov_mu[input,input_t]
-  cov_t_t = sapply(timestamps, function(x) kern(x,timestamps, theta)) + cov_mu[input_t ,input_t]
-           
-  pred = tibble('Timestamp' = timestamps,
-                'Mean' = mean_mu[input_t,] + t(cov_tn_t) %*% inv_mat %*% (yn - mean_mu[input,]) %>% as.vector,
-                'Var' = (cov_t_t - t(cov_tn_t) %*% inv_mat %*% cov_tn_t) %>% diag())
-  return(pred)
+  inv_mat = (kern_to_cov(tn, kern, theta, sigma) + cov_mu[input, input]) %>% solve()
+  cov_tn_t = sapply(timestamps, function(t) sapply(tn, function(s) kern(t, s, theta))) + cov_mu[input,input_t]
+  cov_t_t = sapply(timestamps, function(t) sapply(timestamps, function(s) kern(t, s, theta))) + cov_mu[input_t ,input_t]
+  
+  tibble('Timestamp' = timestamps,
+         'Mean' = mean_mu[input_t,] + t(cov_tn_t) %*% inv_mat %*% (yn - mean_mu[input,]) %>% as.vector(),
+         'Var' = (cov_t_t - t(cov_tn_t) %*% inv_mat %*% cov_tn_t) %>% diag()) %>% return()
 }
 
 ################ PLOT FUNCTIONS ######################
@@ -171,29 +171,37 @@ plot_gp = function(pred_gp, data = NULL)
 ################ APPLICATION #########################
 ## Test graph
 pred_gp(db_obs %>% filter(Timestamp %in% 11:20), timestamps = seq(10,20, 0.03), mean_mu = 50,
-        theta = c(3,0.4,0.2)) %>%  plot_gp(data = db_obs)
+        theta = c(3,0.4), sigma = 0.2) %>% plot_gp(data = db_obs)
 
 
-full_algo = function()
+full_algo = function(db, timestamps, ini_param, prior_mean, kern_0, kern_i)
 {
   
 }
 
 
 ##### Testing codes ############
-grid = seq(9,21,0.019)
-pred = c()
-for(i in grid){
-  grid_t = c(i,11:20)
-  list_invi = kern_to_inv(db)
-  list_valuei = list()
-  for(i in unique(db$ID)){list_valuei[[i]] =  db %>% filter(ID == i) %>% pull(Output)}
-  upinv = update_inv(kern_to_inv(grid_t, theta = c(14, 1, 0.2)), list_invi) 
-  upcov = upinv %>% solve()
-  upmean = (upinv %>% solve()) %*% update_mean(40, kern_to_inv(grid_t, theta = c(14, 1, 0.2)), list_invi , list_valuei)
-  
-  pred = rbind(pred, pred_gp(data = db_obs %>% filter(Timestamp %in% c(11:16)), timestamps = grid_t, mean_mu = upmean,
-                             cov_mu = upcov, kern = kernel, theta = list(5, 1, 0))[1,])
-}
+bla = training(db_train, 0, param_test, kernel_mu, kernel)
+fu = bla$param$mean$Output
+names(fu) = colnames(bla$param$cov)
+pred_gp(db_obs %>% filter(Timestamp %in% 11:13), timestamps = 11:20, mean_mu = fu %>% as.matrix(),
+        cov_mu = bla$param$cov, theta = c(1,1), sigma = 0.5) %>% plot_gp(data = rbind(db_obs, db_train))
 
-plot_gp(pred, data = db_obs)
+### Testing update_mean and update_inv
+# grid = seq(9,21,0.019)
+# pred = c()
+# for(i in grid){
+#   grid_t = c(i,11:20)
+#   list_invi = kern_to_inv(db_train)
+#   list_valuei = list()
+# 
+#   for(i in unique(db_train$ID)){list_valuei[[i]] =  db_train %>% filter(ID == i) %>% pull(Output)}
+#   upinv = update_inv(kern_to_inv(grid_t, theta = c(2, 1), sigma = 0.2), list_invi)
+#   upcov = upinv %>% solve()
+#   upmean = (upinv %>% solve()) %*% update_mean(40, kern_to_inv(grid_t, theta = c(2, 1), sigma = 0.2), list_invi , list_valuei)
+# 
+#   pred = rbind(pred, pred_gp(data = db_obs %>% filter(Timestamp %in% c(11:15)), timestamps = grid_t, mean_mu = upmean,
+#                              cov_mu = upcov, kern = kernel, theta = list(2, 1), sigma = 0.2)[1,])
+# }
+# 
+# plot_gp(pred, data = rbind(db_obs, db_train))
