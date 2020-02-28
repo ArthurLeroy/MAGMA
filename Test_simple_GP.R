@@ -84,18 +84,14 @@ gr_fn = function(x, db = db_test)
 ############ logL of the GP ##############
 fn<- function (x, db = db_test, mean = 0, kern = kernel) 
 {
-  #y = db$Output
-  #t = db$Timestamp
-  #n = nrow(db)
-  #inv = kern_to_inv(t, kernel, theta = x)
-  #return(-(t(y) %*% inv %*% y)/2 + log(det(inv))/2 - log(2*pi)*n/2) 
   return(- dmvnorm(db$Output, rep(0, nrow(db)), 
                    kern_to_inv(db$Timestamp, kern, theta = x[1:2], sigma = x[3]), log = T))
 }
 
 
 t = 10:20
-db_test = tibble('Timestamp' = t, 
+db_test = tibble('ID' = '1',
+                 'Timestamp' = t, 
                  'Input' = paste0('X', t),
                  'Output' = rmvnorm(1, rep(0,length(t)), kern_to_cov(t, kernel, theta = list(1, 0.5), sigma = 0.2)) %>% as.vector())
 
@@ -105,6 +101,6 @@ result0 <- opm(st0, fn, method = meth0, control = list(kkt = FALSE))
 result0 = summary(result0, order=value)
 result0
 
-pred_gp(db_test, timestamps = seq(9,21, 0.03), mean = 0,
+pred_gp(db_test, timestamps = seq(9,21, 0.03), mean = 10,
         theta = c(result0$p1[1], result0$p2[1]), sigma = result0$p3[1]) %>% plot_gp(data = db_test)
 
