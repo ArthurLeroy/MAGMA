@@ -6,47 +6,47 @@ library(mvtnorm)
 #setwd(dir = 'C:/Users/user/CloudStation/Maths/These/Processus Gaussiens/Code R/Algo multitask GP')
 source('Computing_functions.R')
 
-# ################ SIMULATED DATA ######################
-simu_indiv = function(ID, t, kern = kernel_mu, theta, mean, var)
-{ ## Return Age and Performance of a simulated individual
-  ## nb : Number of timestamps
-  ## Id : identifier of the individual
-  ## tmin : Value of the first timestamp
-  ## tmax : Value of the last timestamp
-  ## a : Multiplying coefficient
-  ## b : Intercept
-  ## var : Variance of the additive noise
-  # t = seq(tmin, tmax, length.out = nb)
-  # indiv = tibble('ID' = rep(as.character(ID), nb), 'Timestamp' = t, 'Input' = paste0('X', t),
-  #                'Output' = a*t + b + rnorm(nb,0,var),'a' = rep(runif(1,0,5) %>% round(2), nb),
-  #                'b' = rep(runif(1,0,0.5) %>% round(2), nb))
-
-  db = tibble('ID' = ID,
-                   'Timestamp' = t,
-                   'Input' = paste0('X', t),
-                   'Output' = rmvnorm(1, rep(mean,length(t)), kern_to_cov(t, kern, theta, sigma = var)) %>% as.vector())
-  return(db)
-}
-
-#set.seed(42)
-M = 10
-N = 10
-t = matrix(0, ncol = N, nrow = M)
-for(i in 1:M){t[i,] = sample(seq(10, 20, 0.05),N, replace = F) %>% sort()}
-
-db_train = simu_indiv(ID = '1', t[1,], kernel_mu, theta = c(2,1), mean = 45, var = 0.2)
-for(i in 2:M)
-{
-  k = i %% 5
-  if(k == 0){db_train = rbind(db_train, simu_indiv(ID = as.character(i), t[i,], kernel_mu, theta = c(2,2), mean = 45, var = 0.6))}
-  if(k == 1){db_train = rbind(db_train, simu_indiv(ID = as.character(i), t[i,], kernel_mu, theta = c(2,1), mean = 40, var = 0.2))}
-  if(k == 2){db_train = rbind(db_train, simu_indiv(ID = as.character(i), t[i,], kernel_mu, theta = c(3,2), mean = 50, var = 0.3))}
-  if(k == 3){db_train = rbind(db_train, simu_indiv(ID = as.character(i), t[i,], kernel_mu, theta = c(1,2), mean = 35, var = 0.4))}
-  if(k == 4){db_train = rbind(db_train, simu_indiv(ID = as.character(i), t[i,], kernel_mu, theta = c(1,1), mean = 55, var = 0.5))}
-}
-
-
-db_obs = simu_indiv(ID = (M+1) %>% as.character(), t[1,], kernel_mu, theta = c(2,1), mean = 45, var = 0.2)
+################ SIMULATED DATA ######################
+# simu_indiv = function(ID, t, kern = kernel_mu, theta, mean, var)
+# { ## Return Age and Performance of a simulated individual
+#   ## nb : Number of timestamps
+#   ## Id : identifier of the individual
+#   ## tmin : Value of the first timestamp
+#   ## tmax : Value of the last timestamp
+#   ## a : Multiplying coefficient
+#   ## b : Intercept
+#   ## var : Variance of the additive noise
+#   # t = seq(tmin, tmax, length.out = nb)
+#   # indiv = tibble('ID' = rep(as.character(ID), nb), 'Timestamp' = t, 'Input' = paste0('X', t),
+#   #                'Output' = a*t + b + rnorm(nb,0,var),'a' = rep(runif(1,0,5) %>% round(2), nb),
+#   #                'b' = rep(runif(1,0,0.5) %>% round(2), nb))
+# 
+#   db = tibble('ID' = ID,
+#                    'Timestamp' = t,
+#                    'Input' = paste0('X', t),
+#                    'Output' = rmvnorm(1, rep(mean,length(t)), kern_to_cov(t, kern, theta, sigma = var)) %>% as.vector())
+#   return(db)
+# }
+# 
+# #set.seed(42)
+# M = 10
+# N = 10
+# t = matrix(0, ncol = N, nrow = M)
+# for(i in 1:M){t[i,] = sample(seq(10, 20, 0.05),N, replace = F) %>% sort()}
+# 
+# db_train = simu_indiv(ID = '1', t[1,], kernel_mu, theta = c(2,1), mean = 45, var = 0.2)
+# for(i in 2:M)
+# {
+#   k = i %% 5
+#   if(k == 0){db_train = rbind(db_train, simu_indiv(ID = as.character(i), t[i,], kernel_mu, theta = c(2,2), mean = 45, var = 0.6))}
+#   if(k == 1){db_train = rbind(db_train, simu_indiv(ID = as.character(i), t[i,], kernel_mu, theta = c(2,1), mean = 40, var = 0.2))}
+#   if(k == 2){db_train = rbind(db_train, simu_indiv(ID = as.character(i), t[i,], kernel_mu, theta = c(3,2), mean = 50, var = 0.3))}
+#   if(k == 3){db_train = rbind(db_train, simu_indiv(ID = as.character(i), t[i,], kernel_mu, theta = c(1,2), mean = 35, var = 0.4))}
+#   if(k == 4){db_train = rbind(db_train, simu_indiv(ID = as.character(i), t[i,], kernel_mu, theta = c(1,1), mean = 55, var = 0.5))}
+# }
+# 
+# 
+# db_obs = simu_indiv(ID = (M+1) %>% as.character(), t[1,], kernel_mu, theta = c(2,1), mean = 45, var = 0.2)
 
 # ################ INITIALISATION ######################
 # ini_hp = list('theta_0' = c(1,1), 'theta_i' = c(1, 1, 0.2))
@@ -204,18 +204,18 @@ full_algo = function(db, new_db, timestamps, kern_i, plot = T,
 ##### Testing codes ############
 
 ### Testing the full_algo function
-bla = training(db_train, 0, ini_hp, kernel_mu, kernel)
- list_hp_test = bla[c('theta_0','theta_i')]
-list_hp_test$theta_0 = c(7,1) ## Because hp of K_0 are crucial and often mistrained
-blab = full_algo(db_train, db_obs[3:7,], seq(10, 20, 0.05), kernel, plot = T, prior_mean = 0, kern_0 = kernel_mu,
-          list_hp = list_hp_test, mu = NULL, ini_hp = ini_hp, hp_new_i = hp_one_gp)
-
-plot_gp(blab$Prediction, db_obs[3:7,])
-
-hp_one_gp = list('theta' = c(5,2), 'sigma' = 0.2)
-fu = pred_gp(db_obs[3:7,], seq(10, 20, 0.05), mean_mu = 0 , cov_mu = NULL, kernel,
-             theta = c(5,2), 0.2)
-plot_gp(fu, db_obs[3:7,])
+# bla = training(db_train, 0, ini_hp, kernel_mu, kernel)
+#  list_hp_test = bla[c('theta_0','theta_i')]
+# list_hp_test$theta_0 = c(7,1) ## Because hp of K_0 are crucial and often mistrained
+# blab = full_algo(db_train, db_obs[3:7,], seq(10, 20, 0.05), kernel, plot = T, prior_mean = 0, kern_0 = kernel_mu,
+#           list_hp = list_hp_test, mu = NULL, ini_hp = ini_hp, hp_new_i = hp_one_gp)
+# 
+# plot_gp(blab$Prediction, db_obs[3:7,])
+# 
+# hp_one_gp = list('theta' = c(5,2), 'sigma' = 0.2)
+# fu = pred_gp(db_obs[3:7,], seq(10, 20, 0.05), mean_mu = 0 , cov_mu = NULL, kernel,
+#              theta = c(5,2), 0.2)
+# plot_gp(fu, db_obs[3:7,])
 ### Testing the training function
 # bla = training(db_train, 45, ini_hp, kernel_mu, kernel)
 # fu = bla$param$mean$Output

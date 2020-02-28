@@ -26,6 +26,12 @@ draw = function(int)
   return(runif(1,int[1], int[2]) %>% round(2))
 }
 
+prior_mean = function(t)
+{
+  a = draw(c(-1, 1))
+  b = draw(c(0,10))
+  return(a * t + b)
+}
 
 simu_scheme = function(M = 10, N = 10, G = seq(0, 10, 0.05), kern_0 = kernel_mu, kern_i = kernel,
                        int_mu_a = c(0,5),
@@ -182,12 +188,6 @@ eval = simu_study(M = 20, N = 10, G = seq(0, 10, 0.05), prior_mean = 0, kern_0 =
 
 ##### INITIALISATION #####
 
-prior_mean = function(t)
-{
-  a = draw(c(-1, 1))
-  b = draw(c(0,10))
-  return(a * t + b)
-}
 # M = 10
 # N = 10
 # G = seq(0,10, 0.05)
