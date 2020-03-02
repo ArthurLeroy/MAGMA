@@ -160,7 +160,7 @@ simu_study = function(M, N, G, prior_mean, kern_0, kern_i, ini_hp, ratio_train, 
     res_one_gp = pred_gp(db_obs_i, t_i_pred, prior_mean, cov_mu = NULL, kern_i, hp_one_gp_i$theta, hp_one_gp_i$sigma)
     
     res_gpfda = full_algo(db_train, db_obs_i, t_i_pred, kern_i, plot = F, prior_mean, kern_0,
-                          list_hp_test, mu = NULL, ini_hp, hp_new_i = NULL)$Prediction
+                          list_hp, mu = NULL, ini_hp, hp_new_i = NULL)$Prediction
       
     list('algo' = res_algo, 'one_gp' = res_one_gp, 'gpfda' = res_gpfda) %>% 
     eval_methods(db_pred_i %>% pull(Output)) %>% return() 
@@ -175,7 +175,7 @@ simu_study = function(M, N, G, prior_mean, kern_0, kern_i, ini_hp, ratio_train, 
 db_train = simu_scheme(M = 10, N = 10, G = seq(0, 10, 0.05))
 plot_db(db_train)
 
-eval = simu_study(M = 20, N = 10, G = seq(0, 10, 0.05), prior_mean = 0, kern_0 = kernel_mu, kern_i = kernel,
+eval = simu_study(M = 10, N = 10, G = seq(0, 10, 0.1), prior_mean = 0, kern_0 = kernel_mu, kern_i = kernel,
                   ini_hp,
                   ratio_train = 0.6,
                   int_mu_a = c(0,5),
