@@ -1,0 +1,46 @@
+%% LyX 2.1.2 created this file.  For more info, see http://www.lyx.org/.
+%% Do not edit unless you really know what you are doing.
+\documentclass[english]{article}
+\usepackage[latin9]{inputenc}
+\usepackage{babel}
+\usepackage{amsmath}
+\usepackage{amssymb}
+
+\begin{document}
+
+\title{}
+
+
+\author{}
+%\maketitle
+
+
+\begin{equation*}
+  y_i   =   X_i   \beta  +   X_i\eta_i   +
+  \epsilon_i, 
+\end{equation*}
+avec $\beta \in \mathbb{R}^p$, $\eta_i \sim \mathcal{N}(0_p, \Omega)$ et $\epsilon_i \sim
+\mathcal{N}(0, \sigma^2I_{n_i})$. Marginalement, nous avons :
+\begin{equation*}
+  y_i      |      X_i      \sim      \mathcal{N}(X_i\beta,
+  X_i\Omega X_i^{\intercal} + \sigma^2 I_{n_i}).
+\end{equation*}
+Important : même marginalement, les $(y_i|X_i)_i$ restent indépendants. 
+Si maintenant nous mettons un prior sur $\beta$ :
+\begin{equation*}
+\beta \sim \mathcal{N}(0_p, \Sigma). 
+\end{equation*}
+Marginalement, nous obtenons :
+\begin{equation*}
+  y_i   |   X_i, \sim   \mathcal{N}(0_{n_i},
+  X_i(\Sigma + \Omega)X_i^{\intercal} + \sigma^2 I_{n_i}).
+\end{equation*}
+Nous sommes  donc bien centrés en  $0_{n_i}$ pour chaque $i$.  Cela resemble
+bien à un  modèle à effets mixtes où l'effet  population  est
+fixé à $0_p$ et les effets aléatoires ont une covariance $\Omega'$. Mais :
+comme $\beta$ est  commun à tous les $i$, la  marginalisation induit que
+les $(y_i  | X_i)$ ne sont  plus indépendants. Cela change  pas mal de
+choses. Le modèle mixte  ferait l'hypothèse d'indépendance (Monolix) ce
+qui n'est pas le cas ici (?).
+
+\end{document}
