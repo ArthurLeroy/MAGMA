@@ -6,47 +6,47 @@ library(mvtnorm)
 #setwd(dir = 'C:/Users/user/CloudStation/Maths/These/Processus Gaussiens/Code R/Algo multitask GP')
 source('Computing_functions.R')
 
-################ SIMULATED DATA ######################
-# simu_indiv = function(ID, t, kern = kernel_mu, theta, mean, var)
-# { ## Return Age and Performance of a simulated individual
-#   ## nb : Number of timestamps
-#   ## Id : identifier of the individual
-#   ## tmin : Value of the first timestamp
-#   ## tmax : Value of the last timestamp
-#   ## a : Multiplying coefficient
-#   ## b : Intercept
-#   ## var : Variance of the additive noise
-#   # t = seq(tmin, tmax, length.out = nb)
-#   # indiv = tibble('ID' = rep(as.character(ID), nb), 'Timestamp' = t, 'Input' = paste0('X', t),
-#   #                'Output' = a*t + b + rnorm(nb,0,var),'a' = rep(runif(1,0,5) %>% round(2), nb),
-#   #                'b' = rep(runif(1,0,0.5) %>% round(2), nb))
-# 
-#   db = tibble('ID' = ID,
-#                    'Timestamp' = t,
-#                    'Input' = paste0('X', t),
-#                    'Output' = rmvnorm(1, rep(mean,length(t)), kern_to_cov(t, kern, theta, sigma = var)) %>% as.vector())
-#   return(db)
-# }
-# 
-# #set.seed(42)
-# M = 10
-# N = 10
-# t = matrix(0, ncol = N, nrow = M)
-# for(i in 1:M){t[i,] = sample(seq(10, 20, 0.05),N, replace = F) %>% sort()}
-# 
-# db_train = simu_indiv(ID = '1', t[1,], kernel_mu, theta = c(2,1), mean = 45, var = 0.2)
-# for(i in 2:M)
-# {
-#   k = i %% 5
-#   if(k == 0){db_train = rbind(db_train, simu_indiv(ID = as.character(i), t[i,], kernel_mu, theta = c(2,2), mean = 45, var = 0.6))}
-#   if(k == 1){db_train = rbind(db_train, simu_indiv(ID = as.character(i), t[i,], kernel_mu, theta = c(2,1), mean = 40, var = 0.2))}
-#   if(k == 2){db_train = rbind(db_train, simu_indiv(ID = as.character(i), t[i,], kernel_mu, theta = c(3,2), mean = 50, var = 0.3))}
-#   if(k == 3){db_train = rbind(db_train, simu_indiv(ID = as.character(i), t[i,], kernel_mu, theta = c(1,2), mean = 35, var = 0.4))}
-#   if(k == 4){db_train = rbind(db_train, simu_indiv(ID = as.character(i), t[i,], kernel_mu, theta = c(1,1), mean = 55, var = 0.5))}
-# }
-# 
-# 
-# db_obs = simu_indiv(ID = (M+1) %>% as.character(), t[1,], kernel_mu, theta = c(2,1), mean = 45, var = 0.2)
+############### SIMULATED DATA ######################
+simu_indiv = function(ID, t, kern = kernel_mu, theta, mean, var)
+{ ## Return Age and Performance of a simulated individual
+  ## nb : Number of timestamps
+  ## Id : identifier of the individual
+  ## tmin : Value of the first timestamp
+  ## tmax : Value of the last timestamp
+  ## a : Multiplying coefficient
+  ## b : Intercept
+  ## var : Variance of the additive noise
+  # t = seq(tmin, tmax, length.out = nb)
+  # indiv = tibble('ID' = rep(as.character(ID), nb), 'Timestamp' = t, 'Input' = paste0('X', t),
+  #                'Output' = a*t + b + rnorm(nb,0,var),'a' = rep(runif(1,0,5) %>% round(2), nb),
+  #                'b' = rep(runif(1,0,0.5) %>% round(2), nb))
+
+  db = tibble('ID' = ID,
+                   'Timestamp' = t,
+                   'Input' = paste0('X', t),
+                   'Output' = rmvnorm(1, rep(mean,length(t)), kern_to_cov(t, kern, theta, sigma = var)) %>% as.vector())
+  return(db)
+}
+
+#set.seed(42)
+M = 10
+N = 10
+t = matrix(0, ncol = N, nrow = M)
+for(i in 1:M){t[i,] = sample(seq(10, 20, 0.5),N, replace = F) %>% sort()}
+
+db_train = simu_indiv(ID = '1', t[1,], kernel_mu, theta = c(2,1), mean = 45, var = 0.2)
+for(i in 2:M)
+{
+  k = i %% 5
+  if(k == 0){db_train = rbind(db_train, simu_indiv(ID = as.character(i), t[i,], kernel_mu, theta = c(2,2), mean = 45, var = 0.6))}
+  if(k == 1){db_train = rbind(db_train, simu_indiv(ID = as.character(i), t[i,], kernel_mu, theta = c(2,1), mean = 40, var = 0.2))}
+  if(k == 2){db_train = rbind(db_train, simu_indiv(ID = as.character(i), t[i,], kernel_mu, theta = c(3,2), mean = 50, var = 0.3))}
+  if(k == 3){db_train = rbind(db_train, simu_indiv(ID = as.character(i), t[i,], kernel_mu, theta = c(1,2), mean = 35, var = 0.4))}
+  if(k == 4){db_train = rbind(db_train, simu_indiv(ID = as.character(i), t[i,], kernel_mu, theta = c(1,1), mean = 55, var = 0.5))}
+}
+
+
+db_obs = simu_indiv(ID = (M+1) %>% as.character(), sample(seq(10, 20, 0.05), N, replace = F) %>% sort(), kernel_mu, theta = c(2,1), mean = 45, var = 0.2)
 
 # ################ INITIALISATION ######################
 # ini_hp = list('theta_0' = c(1,1), 'theta_i' = c(1, 1, 0.2))
@@ -70,16 +70,21 @@ training = function(db, prior_mean, ini_hp, kern_0 = kernel_mu, kern_i = kernel)
   for(i in 1:n_loop_max)
   { 
     print(i)
+    ## E-Step
     param = e_step(db, prior_mean, kern_0, kern_i, hp)   
+    
+    ## Monitoring of the LL
+    logLL_complete = logL_multi_GP(hp, db, kern_i, kern_0, param$mean, param$cov, m_0 = prior_mean) - 
+                      0.5 * ( nrow(param$cov) + log(det(param$cov)) ) 
+    c(logL_new, logLL_complete, eps) %>% print()
+    ## M-Step
     new_hp = m_step(db, hp, mean = param$mean, cov = param$cov, kern_0, kern_i, prior_mean)
     
+    ## Testing the stoping condition
     logL_new = logL_multi_GP(new_hp, db, kern_i, kern_0, param$mean, param$cov, m_0 = prior_mean)
     eps = (logL_new - logL_multi_GP(hp, db, kern_i, kern_0, param$mean, param$cov, m_0 = prior_mean)) / 
           abs(logL_new)
     
-    c(logL_new, logL_multi_GP(hp, db, kern_i, kern_0, param$mean, param$cov, m_0 = prior_mean), eps) %>% print()
-    #print(eps)
-    #print(param$cov %>% det())
     if(eps <= 0){stop('Likelihood descreased')}
     if(eps > 0 & eps < 1e-3)
     {
@@ -127,9 +132,9 @@ posterior_mu = function(db, timestamps, m_0, kern_0, kern_i, hp)
   list('Timestamp' = timestamps, 'Mean' = new_mean, 'Cov' = new_cov) %>% return()
 }
 
-pred_gp = function(data, timestamps, mean_mu = NULL , cov_mu = NULL, 
+pred_gp = function(db, timestamps, mean_mu = NULL , cov_mu = NULL, 
                    kern = kernel, theta = list(1,0.2), sigma = 0.2)
-{ ## data: tibble of data columns required ('Timestamp', 'Input', 'Output')(Input format : paste0('X', Timestamp))
+{ ## db: tibble of data columns required ('Timestamp', 'Input', 'Output')(Input format : paste0('X', Timestamp))
   ## timestamps : timestamps on which we want a prediction
   ## mean_mu : mean value of mean GP at timestamps (obs + pred) (matrix dim: timestamps x 1, with Input rownames)
   ## cov_mu : covariance of mean GP at timestamps (obs + pred) (square matrix, with Input row/colnames)
@@ -138,9 +143,9 @@ pred_gp = function(data, timestamps, mean_mu = NULL , cov_mu = NULL,
   ## sigma : variance of the error term of the models
   ####
   ## return : pamameters of the gaussian density predicted at timestamps 
-  tn = data %>% pull(Timestamp)
-  input = data %>% pull(Input)
-  yn = data %>% pull(Output)
+  tn = db %>% pull(Timestamp)
+  input = db %>% pull(Input)
+  yn = db %>% pull(Output)
   input_t = paste0('X', timestamps)
   all_times = union(tn,timestamps)
   
@@ -178,9 +183,22 @@ plot_gp = function(pred_gp, data = NULL)
 
 ################ APPLICATION #########################
 
-full_algo = function(db, new_db, timestamps, kern_i, plot = T,
-                     prior_mean = NULL, kern_0 = NULL, list_hp = NULL, mu = NULL, ini_hp = NULL, hp_new_i = NULL)
-{
+full_algo = function(db, new_db, timestamps, kern_i, plot = T, prior_mean,
+                     kern_0 = NULL, list_hp = NULL, mu = NULL, ini_hp = NULL, hp_new_i = NULL)
+{ ## db : Database containing all training data from all individuals. Column: ID - Timestamp - Output.
+  ## new_db : Database containing data for a new individual we want a prediction on.
+  ## timestamps : Timestamps we want to predict at.
+  ## kern_i : Kernel associated to individual GPs.
+  ## plot : Boolean indicating whether we want to display a graph at the end of computations.
+  ## prior_mean : Prior arbitrary value for the mean process. Optional, not needed if 'mu' is given.
+  ## kern_0 : Kernel associated to the mean GPs. Optional, not needed if 'mu' is given.
+  ## list_hp : Hyper-parameters for all individuals in training set. Optional, computed if NULL.
+  ## mu : Database containing parameters of the mean GP at all prediction timestamps. Optional, computed if NULL.
+  ## ini_hp : Initial values of the HP to start the training. Optional, not needed if 'list_hp' is given.
+  ## hp_new_i : Hyper-pameters for the new individual to predict. Optional, computed if NULL. 
+  ####
+  ## return : predicted GP parameters | posterior mean process | all trained hyperparameters
+  
   if(is.null(list_hp)){list_hp = training(db, prior_mean, ini_hp, kern_0, kern_i)[c('theta_0', 'theta_i')]}
   
   t_pred = timestamps %>% union(unique(db$Timestamp)) %>% union(unique(new_db$Timestamp)) %>% sort()
@@ -211,7 +229,7 @@ full_algo = function(db, new_db, timestamps, kern_i, plot = T,
 #           list_hp = list_hp_test, mu = NULL, ini_hp = ini_hp, hp_new_i = hp_one_gp)
 # 
 # plot_gp(blab$Prediction, db_obs[3:7,])
-# 
+
 # hp_one_gp = list('theta' = c(5,2), 'sigma' = 0.2)
 # fu = pred_gp(db_obs[3:7,], seq(10, 20, 0.05), mean_mu = 0 , cov_mu = NULL, kernel,
 #              theta = c(5,2), 0.2)
