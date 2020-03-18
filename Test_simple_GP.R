@@ -89,7 +89,7 @@ fn<- function (x, db = db_test, mean = 0, kern = kernel)
 }
 
 
-t = 10:20
+t = seq(0, 10, length=1000)
 db_test = tibble('ID' = '1',
                  'Timestamp' = t, 
                  'Input' = paste0('X', t),
