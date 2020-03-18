@@ -66,6 +66,7 @@ training = function(db, prior_mean, ini_hp, kern_0 = kernel_mu, kern_i = kernel)
   hp = list('theta_0' = ini_hp$theta_0, 
             'theta_i' = ini_hp$theta_i %>% list() %>% rep(length(list_ID))  %>% setNames(nm = list_ID))
   cv = 'FALSE'
+  logLL_monitoring = - Inf
   
   for(i in 1:n_loop_max)
   { 
@@ -74,9 +75,13 @@ training = function(db, prior_mean, ini_hp, kern_0 = kernel_mu, kern_i = kernel)
     param = e_step(db, prior_mean, kern_0, kern_i, hp)   
     
     ## Monitoring of the LL
-    logLL_complete = logL_multi_GP(hp, db, kern_i, kern_0, param$mean, param$cov, m_0 = prior_mean) - 
-                      0.5 * ( nrow(param$cov) + log(det(param$cov)) ) 
-    c(logL_new, logLL_complete, eps) %>% print()
+    new_logLL_monitoring = logL_multi_GP(hp, db, kern_i, kern_0, param$mean, param$cov, m_0 = prior_mean) - 
+                            0.5 * ( nrow(param$cov) + log(det(param$cov)) ) 
+    c(new_logLL_monitoring) %>% print()
+    
+    diff_moni = new_logLL_monitoring - logLL_monitoring
+    if(diff_moni < 0){stop('Likelihood descreased')}
+    
     ## M-Step
     new_hp = m_step(db, hp, mean = param$mean, cov = param$cov, kern_0, kern_i, prior_mean)
     
@@ -86,12 +91,13 @@ training = function(db, prior_mean, ini_hp, kern_0 = kernel_mu, kern_i = kernel)
           abs(logL_new)
     
     if(eps <= 0){stop('Likelihood descreased')}
-    if(eps > 0 & eps < 1e-3)
+    if(eps < 1e-3)
     {
       cv = 'TRUE'
       break
     }
     hp = new_hp
+    logLL_monitoring = new_logLL_monitoring
   }
   return(list('theta_0' = new_hp$theta_0, 'theta_i' = new_hp$theta_i, 'convergence' = cv, 'param' = param))
 }

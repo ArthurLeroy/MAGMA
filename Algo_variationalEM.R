@@ -7,101 +7,132 @@ library(mvtnorm)
 source('Computing_functions_VEM.R')
 
 ##### TRAINING FUNCTIONS ####
-training_VEM = function(db, prior_mean, ini_hp, kern_0 = kernel_mu, kern_i = kernel, ini_tau_i_k)
+training_VEM = function(db, prior_mean_k, ini_hp, kern_0 = kernel_mu, kern_i = kernel, ini_tau_i_k)
 { ## db : database with all individuals in training set. Column required : 'ID', Timestamp', 'Input', 'Output'
   ## prior_mean : prior mean parameter of the K mean GPs (mu_k)
-  ## ini_param : initial values of HP for the kernels
+  ## ini_hp : initial values of HP for the kernels
   ## kern_0 : kernel associated to covariance functions of the mean GP
   ## kern_i : kernel associated to common covariance functions of all individuals GPs
+  ## ini_tau_i_k : initial values of probabiliy to belong to each cluster for each individuals. 
   ####
   ## return : list of trained HP, boolean to indicate convergence
   n_loop_max = 25
   list_ID = unique(db$ID)
-  hp = list('theta_0' = ini_hp$theta_0, 
+  ID_k = names(prior_mean_k)
+  hp = list('theta_k' = ini_hp$theta_k %>% list() %>% rep(length(ID_k))  %>% setNames(nm = ID_k), 
             'theta_i' = ini_hp$theta_i %>% list() %>% rep(length(list_ID))  %>% setNames(nm = list_ID))
   cv = 'FALSE'
-  
   tau_i_k = ini_tau_i_k
-  pi_k = ### compute them with the ini_tau_i_k
-  
+  hp[['pi_k']] = sapply( tau_i_k, function(x) x %>% unlist() %>% mean() ) 
+  logLL_monitoring = - Inf
+
   for(i in 1:n_loop_max)
   { 
     print(i)
     ## E-Step
-    param = e_step(db, prior_mean, kern_0, kern_i, hp, tau_i_k, pi_k)  
-    
+    param = e_step_VEM(db, prior_mean_k, kern_0, kern_i, hp, tau_i_k)  
+    browser()
     ## Monitoring of the LL
-    logLL_complete = logL_multi_GP(hp, db, kern_i, kern_0, param$mean, param$cov, m_0 = prior_mean) - 
-      0.5 * ( nrow(param$cov) + log(det(param$cov)) ) 
-    c(logL_new, logLL_complete, eps) %>% print()
+    (new_logLL_monitoring = logL_multi_GP(hp, db, kern_i, kern_0, mu_k_param = param , m_k = prior_mean_k) + 
+                           0.5 * (length(param$cov) * nrow(param$cov[[1]]) +
+                                  Reduce('+', lapply(param$cov, function(x) log(det(x)))) )) %>% print()
+    diff_moni = new_logLL_monitoring - logLL_monitoring
+    
+    if(diff_moni < 0){stop('Likelihood descreased')}
+    
     ## M-Step
-    new_hp = m_step(db, hp, mean = param$mean, cov = param$cov, kern_0, kern_i, prior_mean, param$tau)
+    new_hp = m_step_VEM(db, hp, list_mu_param = param, kern_0, kern_i, prior_mean_k)
     
     ## Testing the stoping condition
-    logL_new = logL_multi_GP(new_hp, db, kern_i, kern_0, param$mean, param$cov, m_k = prior_mean)
-    eps = (logL_new - logL_multi_GP(hp, db, kern_i, kern_0, param$mean, param$cov, m_k = prior_mean)) / 
+    logL_new = logL_multi_GP(new_hp, db, kern_i, kern_0, mu_k_param = param, m_k = prior_mean_k)
+    eps = (logL_new - logL_multi_GP(hp, db, kern_i, kern_0, mu_k_param = param, m_k = prior_mean_k)) / 
           abs(logL_new)
-
-    if(eps <= 0){stop('Likelihood descreased')}
-    if(eps > 0 & eps < 1e-3)
+    
+    print(c('eps', eps))
+    if(eps>0 & eps < 1e-3)
     {
       cv = 'TRUE'
       break
     }
     hp = new_hp
     tau_i_k = param$tau_i_k
-    pi_k = new_hp$pi_k
+    logLL_monitoring = new_logLL_monitoring
   }
-  return(list('theta_0' = new_hp$theta_0, 'theta_i' = new_hp$theta_i, 'convergence' = cv, 'param' = param))
+  return(list('theta_k' = new_hp$theta_k, 'theta_i' = new_hp$theta_i, 'convergence' = cv,  'param' = param))
 }
 
-train_new_gp_VEM = function(db, mean_mu, cov_mu, ini_hp, kern_i)
+### Sûrement besoin d'un VEM pour le nouvel individu
+train_new_gp_VEM = function(db, param_mu_k, ini_hp, kern_i, hp)
 {
+  mean_mu_k = param_mu_k$mean
+  cov_mu_k = param_mu_k$cov
+  pi_k = sapply(param_mu_k$tau_i_k, function(x) Reduce("mean", x)) 
+  
+  tau_k = update_tau_i_k_VEM = function(db, m_k, mean_mu_k, cov_mu_k, kern_i, hp, pi_k)
+  
   LL_GP<- function(hp, db, kern) 
   {
-    return(-dmvnorm(db$Output, mean_mu, solve(kern_to_cov(db$Timestamp, kern, theta = hp[1:2], sigma = hp[3]) + cov_mu),
-                    log = T))
+
+    
+    floop = function(k)
+    {
+      
+      - tau_k[[k]] * dmvnorm(db$Output, mean_mu[[k]], 
+                             solve(kern_to_cov(db$Timestamp, kern, theta = hp[1:2], sigma = hp[3]) + cov_mu_k[[k]]),
+                             log = T) %>% return() 
+    }
+    sapply(names(mean_mu_k), floop) %>% sum() %>% return()
   }
   new_hp = opm(ini_hp, LL_GP, db = db, kern = kern_i, method = "Nelder-Mead", control = list(kkt = FALSE))[1,1:3] 
   
-  tau_k = ### Voir M-step
   
   list('theta' = new_hp[1:2], 'sigma' = new_hp[3], 'tau_k' = tau_k) %>% return()
 }
 
 ################ PREDICTION FUNCTIONS ################
-posterior_mu_k = function(db, timestamps, m_k, kern_0, kern_i, hp, tau_i_k)
+posterior_mu_k = function(db, timestamps, m_k, kern_0, kern_i, hp)
 { ## db : matrix of data columns required ('Timestamp', 'Input', 'Output')(Input format : paste0('X', Timestamp))
   ## timestamps : timestamps on which we want a prediction
   ## prior_mean : prior mean value of the mean GP (scalar value or vector of same length as 'timestamps')
   ## kern_0 : kernel associated to the covariance function of the mean GP
   ####
   ## return : pamameters of the mean GP at timestamps
-  inv_0 = kern_to_inv(timestamps, kern_0, hp$theta_0, sigma = 0.001)
+  t_clust = tibble('ID' = rep(names(m_k), each = length(timestamps)) , 'Timestamp' = rep(timestamps, length(m_k)),
+                   'Input' = rep(paste0('X', timestamps), length(m_k)))
+  inv_k = kern_to_inv(t_clust, kern_0, hp$theta_k, sigma = 0)
   inv_i = kern_to_inv(db, kern_i, hp$theta_i, sigma = 0)
   value_i = base::split(db$Output, list(db$ID))
+  tau_i_k = hp$param$tau_i_k
   
-  new_inv = update_inv(prior_inv = inv_0, list_inv_i = inv_i)
-  new_cov = tryCatch(solve(new_inv), error = function(e){MASS::ginv(new_inv)}) ## fast or slow matrix inversion if singular
-  rownames(new_cov) = rownames(new_inv)
-  colnames(new_cov) = colnames(new_inv)
+  ## Update each mu_k parameters
+  floop = function(k)
+  {
+    new_inv = update_inv_VEM(prior_inv = inv_k[[k]], list_inv_i = inv_i, tau_i_k[[k]])
+    #new_cov = tryCatch(solve(new_inv), error = function(e){MASS::ginv(new_inv)}) ## fast or slow matrix inversion if singular
+    solve(new_inv) %>% return()
+  }
+  cov_k = sapply(names(m_k), floop, simplify = FALSE, USE.NAMES = TRUE)
   
-  weighted_mean = update_mean(prior_mean = m_0, prior_inv = inv_0, list_inv_i = inv_i, list_value_i = value_i)
-  new_mean = new_cov %*% weighted_mean
+  floop2 = function(k)
+  {
+    weighted_mean = update_mean_VEM(m_k[[k]], inv_k[[k]], inv_i, value_i, tau_i_k[[k]])
+    new_mean = cov_k[[k]] %*% weighted_mean %>% as.vector()
+    tibble('Timestamp' = timestamps, 'Output' = new_mean) %>% return()
+  }
+  mean_k = sapply(names(m_k), floop2, simplify = FALSE, USE.NAMES = TRUE)
+  
   
   #names(mean_mu) = paste0('X', t_mu)
-  list('Timestamp' = timestamps, 'Mean' = new_mean, 'Cov' = new_cov) %>% return()
+  list('mean' = mean_k, 'cov' = cov_k) %>% return()
 }
 
-pred_gp_clust = function(db, timestamps, list_mu, kern = kernel, theta = list(1,0.2), sigma = 0.2, tau_k)
+pred_gp_clust = function(db, timestamps, list_mu, kern, hp)
 { ## db : tibble of data columns required ('Timestamp', 'Input', 'Output')(Input format : paste0('X', Timestamp))
   ## timestamps : timestamps on which we want a prediction
   ## mean_mu : mean value of mean GP at timestamps (obs + pred) (matrix dim: timestamps x 1, with Input rownames)
   ## cov_mu : covariance of mean GP at timestamps (obs + pred) (square matrix, with Input row/colnames)
-  ## kernel : kernel associated to the covariance function of the GP
-  ## theta : list of hyperparameters for the kernel of the GP
-  ## sigma : variance of the error term of the models
-  ## tau_k : vector of probability to belong to each cluster for the new individual to predict
+  ## kern : kernel associated to the covariance function of the GP
+  ## hp : list of hyperparameters and tau_k for the new individual
   ####
   ## return : pamameters of the gaussian density predicted at timestamps 
   tn = db %>% pull(Timestamp)
@@ -181,3 +212,73 @@ full_algo_clust = function(db, new_db, timestamps, kern_i, pi_k, plot = T,
   list('Prediction' = pred, 'Mean_process' = mu_k, 'Hyperparameters' = list('other_i' = list_hp, 'new_i' = hp_new_i)) %>% 
     return()
 }
+
+
+############### SIMULATED DATA ######################
+simu_indiv = function(ID, t, kern = kernel_mu, theta, mean, var)
+{ ## Return Age and Performance of a simulated individual
+  ## nb : Number of timestamps
+  ## Id : identifier of the individual
+  ## tmin : Value of the first timestamp
+  ## tmax : Value of the last timestamp
+  ## a : Multiplying coefficient
+  ## b : Intercept
+  ## var : Variance of the additive noise
+  # t = seq(tmin, tmax, length.out = nb)
+  # indiv = tibble('ID' = rep(as.character(ID), nb), 'Timestamp' = t, 'Input' = paste0('X', t),
+  #                'Output' = a*t + b + rnorm(nb,0,var),'a' = rep(runif(1,0,5) %>% round(2), nb),
+  #                'b' = rep(runif(1,0,0.5) %>% round(2), nb))
+  
+  db = tibble('ID' = ID,
+              'Timestamp' = t,
+              'Input' = paste0('X', t),
+              'Output' = rmvnorm(1, rep(mean,length(t)), kern_to_cov(t, kern, theta, sigma = var)) %>% as.vector())
+  return(db)
+}
+
+#set.seed(42)
+M = 10
+N = 10
+t = matrix(0, ncol = N, nrow = M)
+for(i in 1:M){t[i,] = sample(seq(10, 20, 0.01),N, replace = F) %>% sort()}
+
+db_train = simu_indiv(ID = '1', t[1,], kernel_mu, theta = c(2,1), mean = 45, var = 0.2)
+for(i in 2:M)
+{
+  k = i %% 5
+  if(k == 0){db_train = rbind(db_train, simu_indiv(ID = as.character(i), t[i,], kernel_mu, theta = c(2,2), mean = 45, var = 0.6))}
+  if(k == 1){db_train = rbind(db_train, simu_indiv(ID = as.character(i), t[i,], kernel_mu, theta = c(2,1), mean = 40, var = 0.2))}
+  if(k == 2){db_train = rbind(db_train, simu_indiv(ID = as.character(i), t[i,], kernel_mu, theta = c(3,2), mean = 50, var = 0.3))}
+  if(k == 3){db_train = rbind(db_train, simu_indiv(ID = as.character(i), t[i,], kernel_mu, theta = c(1,2), mean = 35, var = 0.4))}
+  if(k == 4){db_train = rbind(db_train, simu_indiv(ID = as.character(i), t[i,], kernel_mu, theta = c(1,1), mean = 55, var = 0.5))}
+}
+
+
+db_obs = simu_indiv(ID = (M+1) %>% as.character(), sample(seq(10, 20, 0.05), N, replace = F) %>%
+                                   sort(), kernel_mu, theta = c(2,1), mean = 45, var = 0.2)
+
+# ################ INITIALISATION ######################
+# ini_hp = list('theta_0' = c(1,1), 'theta_i' = c(1, 1, 0.2))
+# 
+# #### TEST ####
+# k = seq_len(2)
+# tau_i_k_test = replicate(length(k), rep(1,length(unique(db_train$ID)))) %>%
+#   apply(1,function(x) x / sum(x)) %>%
+#   `rownames<-`(paste0('K', k)) %>%
+#   `colnames<-`(unique(db_train$ID)) %>%
+#   apply(1, as.list)
+# 
+# prior_mean_k = list('K1' = 0, 'K2' = 1)
+# ini_hp_test = list('theta_k' = c(2, 0.5, 0.1), 'theta_i' = c(1, 1, 0.2))
+# ## Training
+# t1 = Sys.time()
+# training_test = training_VEM(db_train, prior_mean_k, ini_hp_test, kernel_mu, kernel, tau_i_k_test)
+# t2 = Sys.time()
+# c_time = (t2-t1) %>% print()
+# ## Posterior mu_k
+# timestamps = seq(10, 20, 0.01)
+# post_test = posterior_mu_k(db_train, timestamps, prior_mean_k, kernel_mu, kernel, training_test)
+# ## Pred GP
+# pred_gp_clust(db, timestamps, list_mu, kern = kernel, hp)
+# ## Plot GP
+
