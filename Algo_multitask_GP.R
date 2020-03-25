@@ -2,6 +2,7 @@ library(tidyverse)
 library(MASS)
 library(Matrix)
 library(mvtnorm)
+library(optimr)
 
 #setwd(dir = 'C:/Users/user/CloudStation/Maths/These/Processus Gaussiens/Code R/Algo multitask GP')
 source('Computing_functions.R')
@@ -46,14 +47,15 @@ for(i in 2:M)
 }
 
 
-db_obs = simu_indiv(ID = (M+1) %>% as.character(), sample(seq(10, 20, 0.05), N, replace = F) %>% sort(), kernel_mu, theta = c(2,1), mean = 45, var = 0.2)
+db_obs = simu_indiv(ID = (M+1) %>% as.character(), sample(seq(10, 20, 0.5), N, replace = F) %>% sort(),
+                    kernel_mu, theta = c(2,1), mean = 40, var = 0.2)
 
 # ################ INITIALISATION ######################
-# ini_hp = list('theta_0' = c(1,1), 'theta_i' = c(1, 1, 0.2))
-# m_0 = 50
+ini_hp = list('theta_0' = c(1,1), 'theta_i' = c(1, 1, 0.2))
+m_0 = 50
 
 ################ TRAINING FUNCTIONS ################## 
-training = function(db, prior_mean, ini_hp, kern_0 = kernel_mu, kern_i = kernel)
+training = function(db, prior_mean, ini_hp, kern_0, kern_i, common_hp = T)
 { ## db : database with all individuals in training set. Column required : 'ID', Timestamp', 'Input', 'Output'
   ## prior_mean : prior mean parameter of the mean GP (mu_0)
   ## ini_param : initial values of HP for the kernels
@@ -75,23 +77,23 @@ training = function(db, prior_mean, ini_hp, kern_0 = kernel_mu, kern_i = kernel)
     param = e_step(db, prior_mean, kern_0, kern_i, hp)   
     
     ## Monitoring of the LL
-    new_logLL_monitoring = logL_multi_GP(hp, db, kern_i, kern_0, param$mean, param$cov, m_0 = prior_mean) - 
+    new_logLL_monitoring = logL_monitoring(hp, db, kern_i, kern_0, param$mean, param$cov, m_0 = prior_mean) - 
                             0.5 * ( nrow(param$cov) + log(det(param$cov)) ) 
+    
     c(new_logLL_monitoring) %>% print()
     
     diff_moni = new_logLL_monitoring - logLL_monitoring
-    if(diff_moni < 0){stop('Likelihood descreased')}
+    #if(diff_moni < 0){stop('Likelihood descreased')}
     
     ## M-Step
-    new_hp = m_step(db, hp, mean = param$mean, cov = param$cov, kern_0, kern_i, prior_mean)
-    
+    new_hp = m_step(db, hp, mean = param$mean, cov = param$cov, kern_0, kern_i, prior_mean, common_hp)
+
     ## Testing the stoping condition
-    logL_new = logL_multi_GP(new_hp, db, kern_i, kern_0, param$mean, param$cov, m_0 = prior_mean)
-    eps = (logL_new - logL_multi_GP(hp, db, kern_i, kern_0, param$mean, param$cov, m_0 = prior_mean)) / 
+    logL_new = logL_monitoring(new_hp, db, kern_i, kern_0, param$mean, param$cov, m_0 = prior_mean)
+    eps = (logL_new - logL_monitoring(hp, db, kern_i, kern_0, param$mean, param$cov, m_0 = prior_mean)) / 
           abs(logL_new)
-    
-    if(eps <= 0){stop('Likelihood descreased')}
-    if(eps < 1e-3)
+
+    if(eps > 0 & eps < 1e-10)
     {
       cv = 'TRUE'
       break
@@ -105,14 +107,24 @@ training = function(db, prior_mean, ini_hp, kern_0 = kernel_mu, kern_i = kernel)
 
 train_new_gp = function(db, mean_mu, cov_mu, ini_hp, kern_i)
 {
+  mean = mean_mu %>% filter(Timestamp %in% db$Timestamp) %>% pull(Output)
+  new_cov = cov_mu[paste0('X', db$Timestamp), paste0('X', db$Timestamp)]
   LL_GP<- function(hp, db, kern) 
   {
-    return(-dmvnorm(db$Output, mean_mu, solve(kern_to_cov(db$Timestamp, kern, theta = hp[1:2], sigma = hp[3]) + cov_mu),
+    return(-dmvnorm(db$Output, mean, solve(kern_to_cov(db$Timestamp, kern, theta = hp[1:2], sigma = hp[3]) + new_cov),
                     log = T))
   }
-  new_hp = opm(ini_hp, LL_GP, db = db, kern = kern_i, method = "Nelder-Mead", control = list(kkt = FALSE))[1,1:3] 
+  new_hp = opm(ini_hp, fn = LL_GP, gr = gr_one_GP, kern = kern_i, db = db, method = "L-BFGS-B", control = list(kkt = FALSE)) 
   list('theta' = new_hp[1:2], 'sigma' = new_hp[3]) %>% return()
 }
+
+# t1 = Sys.time()
+# bla = train_new_gp(db_obs, rep(0, nrow(db_obs)), 
+#                    cov_mu = kern_to_cov(db_obs$Timestamp, theta = c(2,1), sigma = 0.5), 
+#                    ini_hp$theta_i, kernel)
+# t2 = Sys.time()
+# t = t2 - t1
+
 
 ################ PREDICTION FUNCTIONS ################
 posterior_mu = function(db, timestamps, m_0, kern_0, kern_i, hp)
@@ -240,14 +252,14 @@ full_algo = function(db, new_db, timestamps, kern_i, plot = T, prior_mean,
 # fu = pred_gp(db_obs[3:7,], seq(10, 20, 0.05), mean_mu = 0 , cov_mu = NULL, kernel,
 #              theta = c(5,2), 0.2)
 # plot_gp(fu, db_obs[3:7,])
-### Testing the training function
-# bla = training(db_train, 45, ini_hp, kernel_mu, kernel)
+## Testing the training function
+# bla = training(db_train, 45, ini_hp, kernel_mu, kernel, common_hp = T)
 # fu = bla$param$mean$Output
 # names(fu) = paste0('X', bla$param$mean$Timestamp)
-# hp_pred = train_gp(db_obs, ini_hp$theta_i, kernel)
+# hp_pred = train_new_gp(db_obs, bla$param$mean, bla$param$cov, ini_hp$theta_i, kernel)
 # 
-# pred_gp(db_obs[1:10,], timestamps = bla$param$mean$Timestamp, mean_mu = fu %>% as.matrix(),
-#         cov_mu = bla$param$cov, theta = hp_pred$theta, sigma = hp_pred$sigma) %>% 
+# pred_gp(db_obs[1:3,], timestamps = bla$param$mean$Timestamp, mean_mu = fu %>% as.matrix(),
+#         cov_mu = bla$param$cov, theta = hp_pred$theta, sigma = hp_pred$sigma) %>%
 #   plot_gp(data = rbind(db_obs[1:10,], db_train)) + geom_point(aes(bla$param$mean$Timestamp, bla$param$mean$Output))
 
 # ### Testing update_mean and update_inv

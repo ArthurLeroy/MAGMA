@@ -2,12 +2,13 @@ library(tidyverse)
 library(MASS)
 library(Matrix)
 library(mvtnorm)
+library(optimr)
 
 #setwd(dir = 'C:/Users/user/CloudStation/Maths/These/Processus Gaussiens/Code R/Algo multitask GP')
 source('Computing_functions_VEM.R')
 
 ##### TRAINING FUNCTIONS ####
-training_VEM = function(db, prior_mean_k, ini_hp, kern_0 = kernel_mu, kern_i = kernel, ini_tau_i_k)
+training_VEM = function(db, prior_mean_k, ini_hp, kern_0, kern_i, ini_tau_i_k, common_hp_k = T, common_hp_i = T)
 { ## db : database with all individuals in training set. Column required : 'ID', Timestamp', 'Input', 'Output'
   ## prior_mean : prior mean parameter of the K mean GPs (mu_k)
   ## ini_hp : initial values of HP for the kernels
@@ -17,9 +18,9 @@ training_VEM = function(db, prior_mean_k, ini_hp, kern_0 = kernel_mu, kern_i = k
   ####
   ## return : list of trained HP, boolean to indicate convergence
   n_loop_max = 25
-  list_ID = unique(db$ID)
+  list_ID = unique(db_train$ID)
   ID_k = names(prior_mean_k)
-  hp = list('theta_k' = ini_hp$theta_k %>% list() %>% rep(length(ID_k))  %>% setNames(nm = ID_k), 
+  hp_test = list('theta_k' = ini_hp$theta_k %>% list() %>% rep(length(ID_k))  %>% setNames(nm = ID_k), 
             'theta_i' = ini_hp$theta_i %>% list() %>% rep(length(list_ID))  %>% setNames(nm = list_ID))
   cv = 'FALSE'
   tau_i_k = ini_tau_i_k
@@ -33,19 +34,19 @@ training_VEM = function(db, prior_mean_k, ini_hp, kern_0 = kernel_mu, kern_i = k
     param = e_step_VEM(db, prior_mean_k, kern_0, kern_i, hp, tau_i_k)  
     browser()
     ## Monitoring of the LL
-    (new_logLL_monitoring = logL_multi_GP(hp, db, kern_i, kern_0, mu_k_param = param , m_k = prior_mean_k) + 
-                           0.5 * (length(param$cov) * nrow(param$cov[[1]]) +
+    (new_logLL_monitoring = logL_monitoring(hp, db, kern_i, kern_0, mu_k_param = param , m_k = prior_mean_k) + 
+                            0.5 * (length(param$cov) * nrow(param$cov[[1]]) +
                                   Reduce('+', lapply(param$cov, function(x) log(det(x)))) )) %>% print()
     diff_moni = new_logLL_monitoring - logLL_monitoring
     
     if(diff_moni < 0){stop('Likelihood descreased')}
     
     ## M-Step
-    new_hp = m_step_VEM(db, hp, list_mu_param = param, kern_0, kern_i, prior_mean_k)
+    new_hp = m_step_VEM(db, hp, list_mu_param = param, kern_0, kern_i, prior_mean_k, common_hp_k, common_hp_i)
     
     ## Testing the stoping condition
-    logL_new = logL_multi_GP(new_hp, db, kern_i, kern_0, mu_k_param = param, m_k = prior_mean_k)
-    eps = (logL_new - logL_multi_GP(hp, db, kern_i, kern_0, mu_k_param = param, m_k = prior_mean_k)) / 
+    logL_new = logL_monitoring(new_hp, db, kern_i, kern_0, mu_k_param = param, m_k = prior_mean_k)
+    eps = (logL_new - logL_monitoring(hp, db, kern_i, kern_0, mu_k_param = param, m_k = prior_mean_k)) / 
           abs(logL_new)
     
     print(c('eps', eps))
@@ -83,7 +84,7 @@ train_new_gp_VEM = function(db, param_mu_k, ini_hp, kern_i, hp)
     }
     sapply(names(mean_mu_k), floop) %>% sum() %>% return()
   }
-  new_hp = opm(ini_hp, LL_GP, db = db, kern = kern_i, method = "Nelder-Mead", control = list(kkt = FALSE))[1,1:3] 
+  new_hp = opm(ini_hp, LL_GP, db = db, kern = kern_i, method = "L-BFGS-B", control = list(kkt = FALSE))[1,1:3] 
   
   
   list('theta' = new_hp[1:2], 'sigma' = new_hp[3], 'tau_k' = tau_k) %>% return()
@@ -120,7 +121,6 @@ posterior_mu_k = function(db, timestamps, m_k, kern_0, kern_i, hp)
     tibble('Timestamp' = timestamps, 'Output' = new_mean) %>% return()
   }
   mean_k = sapply(names(m_k), floop2, simplify = FALSE, USE.NAMES = TRUE)
-  
   
   #names(mean_mu) = paste0('X', t_mu)
   list('mean' = mean_k, 'cov' = cov_k) %>% return()
@@ -238,7 +238,7 @@ simu_indiv = function(ID, t, kern = kernel_mu, theta, mean, var)
 
 #set.seed(42)
 M = 10
-N = 10
+N = 1000
 t = matrix(0, ncol = N, nrow = M)
 for(i in 1:M){t[i,] = sample(seq(10, 20, 0.01),N, replace = F) %>% sort()}
 
@@ -254,22 +254,22 @@ for(i in 2:M)
 }
 
 
-db_obs = simu_indiv(ID = (M+1) %>% as.character(), sample(seq(10, 20, 0.05), N, replace = F) %>%
+db_obs = simu_indiv(ID = (M+1) %>% as.character(), sample(seq(10, 20, 0.01), N, replace = F) %>%
                                    sort(), kernel_mu, theta = c(2,1), mean = 45, var = 0.2)
 
 # ################ INITIALISATION ######################
-# ini_hp = list('theta_0' = c(1,1), 'theta_i' = c(1, 1, 0.2))
+# ini_hp = list('theta_k' = c(1,1), 'theta_i' = c(1, 1, 0.2))
 # 
 # #### TEST ####
-# k = seq_len(2)
-# tau_i_k_test = replicate(length(k), rep(1,length(unique(db_train$ID)))) %>%
-#   apply(1,function(x) x / sum(x)) %>%
-#   `rownames<-`(paste0('K', k)) %>%
-#   `colnames<-`(unique(db_train$ID)) %>%
-#   apply(1, as.list)
-# 
-# prior_mean_k = list('K1' = 0, 'K2' = 1)
-# ini_hp_test = list('theta_k' = c(2, 0.5, 0.1), 'theta_i' = c(1, 1, 0.2))
+k = seq_len(2)
+tau_i_k_test = replicate(length(k), rep(1,length(unique(db_train$ID)))) %>%
+  apply(1,function(x) x / sum(x)) %>%
+  `rownames<-`(paste0('K', k)) %>%
+  `colnames<-`(unique(db_train$ID)) %>%
+  apply(1, as.list)
+
+prior_mean_k = list('K1' = 0, 'K2' = 1)
+ini_hp_test = list('theta_k' = c(2, 0.5, 0.1), 'theta_i' = c(1, 1, 0.2))
 # ## Training
 # t1 = Sys.time()
 # training_test = training_VEM(db_train, prior_mean_k, ini_hp_test, kernel_mu, kernel, tau_i_k_test)

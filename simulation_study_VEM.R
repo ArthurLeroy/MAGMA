@@ -207,3 +207,4 @@ eval = simu_study(M = 10, N = 10, G = seq(0, 10, 0.1), prior_mean = 0, kern_0 = 
 # int_i_sigma = c(0,10)
 # int_test = c(2, (N-1))
 #ratio_train_set = 0.3
+
