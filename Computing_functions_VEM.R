@@ -160,11 +160,11 @@ logL_GP_mod = function(hp, db, mean, kern, new_cov)
   ####
   ##return : value of the modified Gaussian log-likelihood for one GP as it appears in the model
   if(length(mean) == 1){mean = rep(mean, nrow(db))} ## mean is equal for all timestamps
-  if(length(hp) == 2){hp[3] = 0.1} ## mean GP (mu_0) is noiseless and thus has only 2 hp
+  sigma = ifelse((length(hp) == 3), hp[[3]], 0.1) ## mean GP (mu_0) is noiseless and thus has only 2 hp
   
-  cov =  kern_to_cov(db$Timestamp, kern, theta = hp[1:2], sigma = hp[3]) 
+  inv =  kern_to_inv(db$Timestamp, kern, theta = hp[1:2], sigma) 
   #inv = tryCatch(solve(cov), error = function(e){MASS::ginv(cov)}) ## fast or slow matrix inversion if singular
-  inv = solve(cov)
+
   LL_norm = - dmvnorm(db$Output, mean, inv, log = T) ## classic gaussian loglikelihood
   cor_term =  0.5 * (inv * new_cov) %>% sum() ## correction term (0.5 * Trace(inv %*% new_cov))
   
@@ -179,8 +179,8 @@ logL_GP_mod_common_hp_k = function(hp, db, mean, kern, new_cov)
   ## new_cov : list of the k posterior covariance of the mean GP (mu_k). Used to compute correction term (cor_term)
   ####
   ##return : value of the modified Gaussian log-likelihood for the sum of the k mean GPs with same HPs
-  
-  sigma = ifelse((length(x) == 3), hp[3], 0.1) ## mean GP is noiseless (0.1 is for computational issues) has only 2 hp
+
+  sigma = ifelse((length(hp) == 3), hp[[3]], 0.1) ## mean GP is noiseless (0.1 is for computational issues) has only 2 hp
   list_ID_k = names(db)
   t_k = db[[1]] %>% pull(Timestamp)
   inv =  kern_to_inv(t_k, kern, theta = hp[1:2], sigma)
@@ -191,10 +191,9 @@ logL_GP_mod_common_hp_k = function(hp, db, mean, kern, new_cov)
   for(k in list_ID_k)
   {
     y_k = db[[k]] %>% pull(Output)
-    new_cov = new_cov[[k]]
 
     LL_norm = LL_norm - dmvnorm(y_k, rep(mean[[k]], length(t_k)), inv, log = T) 
-    cor_term = cor_term + 0.5 * (inv * new_cov) %>% sum()  ##(0.5 * Trace(inv %*% new_cov))
+    cor_term = cor_term + 0.5 * (inv * new_cov[[k]]) %>% sum()  ##(0.5 * Trace(inv %*% new_cov))
   }
   return(LL_norm + cor_term)
 }
@@ -227,7 +226,53 @@ logL_clust_multi_GP = function(hp, db, mu_k_param, kern)
     corr1 = corr1 + tau_i_k * mean_mu_k
     corr2 = corr2 + tau_i_k * ( mean_mu_k %*% t(mean_mu_k) + mu_k_param$cov[[k]][paste0('X', t_i), paste0('X', t_i)] )
   }
-  return( LL_norm - y_i %*% inv %*% corr1 + 0.5 * sum(diag(inv %*% corr2)) )
+  return( LL_norm - y_i %*% inv %*% corr1 + 0.5 * sum(inv * corr2) )
+}
+
+logL_clust_multi_GP_common_i = function(hp, db, mu_k_param, kern)
+{ ## hp : vector or list of parameters of the kernel with format (a, b, sigma)
+  ## db : tibble containing values we want to compute logL on. Required columns : Timestamp, Output
+  ## mu_k_param : list of parameters for the K mean Gaussian processes
+  ## kern : kernel used to compute the covariance matrix at corresponding timestamps
+  ####
+  ##return : value of the modified Gaussian log-likelihood for one GP as it appears in the model
+  
+  sigma = ifelse((length(hp) == 3), hp[[3]], 0.1) ## mean GP (mu_0) is noiseless and thus has only 2 hp
+  names_k = mu_k_param$mean %>% names()
+  t = unique(db$Timestamp)
+  
+  corr1 = 0
+  corr2 = 0
+  
+  for(k in seq_len(length(names_k)))
+  {
+    tau_i_k = mu_k_param$tau_i_k[[k]][[i]]
+    mean_mu_k = mu_k_param$mean[[k]] %>% filter(Timestamp %in% t) %>% pull(Output)
+    corr1 = corr1 + tau_i_k * mean_mu_k
+    corr2 = corr2 + tau_i_k * ( mean_mu_k %*% t(mean_mu_k) + mu_k_param$cov[[k]][paste0('X', t), paste0('X', t)] )
+  }
+  names(corr1) = paste0('X', t)
+  colnames(corr2) = paste0('X', t)
+  rownames(corr2) = paste0('X', t)
+
+  sum_i = 0
+  t_i_old = NULL
+  
+  for(i in unique(db$ID))
+  {
+    t_i = db %>% filter(ID == i) %>% pull(Timestamp)
+    input_i = paste0('X', t_i)
+    y_i = db %>% filter(ID == i) %>% pull(Output)
+    
+    if( !identical(t_i, t_i_old) )
+    {
+      inv = kern_to_inv(t_i, kern, theta = hp[1:2], sigma) 
+    }
+    LL_norm = - dmvnorm(y_i, rep(0, length(y_i)), inv, log = T) ## classic gaussian centered loglikelihood
+    
+    sum_i = sum_i + LL_norm - y_i %*% inv %*% corr1[input_i] + 0.5 * sum(inv * corr2[input_i,input_i]) 
+  }
+  return(sum_i)
 }
 
 logL_monitoring = function(hp, db, kern_i, kern_0, mu_k_param, m_k)
@@ -293,14 +338,14 @@ gr_GP_mod = function(hp, db, mean, kern, new_cov)
     (- c(g_1, g_2, g_3)) %>% return()
   }
   else   (- c(g_1, g_2)) %>% return()
-}
+} 
 
 gr_GP_mod_common_hp_k = function(hp, db, mean, kern, new_cov)
 { 
   sigma = ifelse((length(hp) == 3), hp[[3]], 0.1)
   list_ID_k = names(db)
   t_k = db[[1]] %>% pull(Timestamp)
-  inv =  kern_to_inv(t_k, kern, theta = param[1:2], sigma)
+  inv =  kern_to_inv(t_k, kern, theta = hp[1:2], sigma)
   
   g_1 = 0
   g_2 = 0
@@ -309,9 +354,8 @@ gr_GP_mod_common_hp_k = function(hp, db, mean, kern, new_cov)
   for(k in list_ID_k)
   {
     y_k = db[[k]] %>% pull(Output)
-    new_cov = new_cov[[k]]
     
-    prod_inv = inv %*% (y_k - mean[[k]] %>% pull(Output)) 
+    prod_inv = inv %*% (y_k - mean[[k]]) 
     cste_term = prod_inv %*% t(prod_inv) + inv %*% ( new_cov[[k]] %*% inv - diag(1, length(t_k)) )
     
     g_1 = g_1 + 1/2 * (cste_term %*% kern_to_cov(t_k, deriv_hp1, theta = hp[1:2], sigma = 0)) %>% diag() %>% sum()
@@ -324,6 +368,39 @@ gr_GP_mod_common_hp_k = function(hp, db, mean, kern, new_cov)
   }
   if(length(hp) == 3) return(- c(g_1, g_2, g_3)) else  return(- c(g_1, g_2))
 }
+
+gr_clust_multi_GP = function(hp, db, mu_k_param, kern)
+{ 
+  names_k = mu_k_param$mean %>% names()
+  t_i = db$Timestamp
+  y_i = db$Output
+  i = unique(db$ID)
+
+  corr1 = 0
+  corr2 = 0
+  for(k in seq_len(length(names_k)))
+  {
+    tau_i_k = mu_k_param$tau_i_k[[k]][[i]]
+    mean_mu_k = mu_k_param$mean[[k]] %>% filter(Timestamp %in% t_i) %>% pull(Output)
+    corr1 = corr1 + tau_i_k * mean_mu_k
+    corr2 = corr2 + tau_i_k * ( mean_mu_k %*% t(mean_mu_k) + mu_k_param$cov[[k]][paste0('X', t_i), paste0('X', t_i)] )
+  }
+  
+  sigma = ifelse((length(hp) == 3), hp[[3]], 0.1)
+  inv = kern_to_inv(t_i, kern, theta = hp[1:2], sigma)
+  prod_inv = inv %*% y_i 
+  cste_term = (prod_inv - 2 * inv %*% corr1) %*% t(prod_inv)  + inv %*% ( corr2 %*% inv - diag(1, length(t_i)) )
+  
+  g_1 = 1/2 * (cste_term %*% kern_to_cov(t_i, deriv_hp1, theta = hp[1:2], sigma = 0)) %>%  diag() %>% sum()
+  g_2 = 1/2 * (cste_term %*% as.matrix(deriv_hp2(dist(t_i)^2, theta = hp[1:2]) ))  %>%  diag() %>% sum()
+  
+  if(length(hp) == 3)
+  {
+    g_3 = hp[[3]] * (cste_term %>% diag() %>% sum() )
+    (- c(g_1, g_2, g_3)) %>% return()
+  }
+  else   (- c(g_1, g_2)) %>% return()
+}  
 
 gr_clust_multi_GP_common_hp_i = function(hp, db, mean, kern, new_cov)
 { 
@@ -357,7 +434,7 @@ gr_clust_multi_GP_common_hp_i = function(hp, db, mean, kern, new_cov)
     }
   }
   if(length(hp) == 3) return(- c(g_1, g_2, g_3)) else  return(- c(g_1, g_2))
-}
+} ## Reste à coder
 
 ##### EM FUNCTIONS #########
 e_step_VEM = function(db, m_k, kern_0, kern_i, hp, old_tau_i_k)
@@ -405,18 +482,20 @@ m_step_VEM = function(db, old_hp, list_mu_param, kern_0, kern_i, m_k, common_hp_
 { ## db : db : full database with all individuals. Columns required : ID, Timestamp, Input, Output
   ## old_hp : the set of hyper-parameters from the previous step of the EM
   ## list_mu_param : List of parameters of the K mean GPs. Format list('mean', 'cov', 'tau_i_k')
-  ## kern_i : kernel used to compute the covariance matrix of individuals GP at corresponding timestamps (Psi_i)
   ## kern_0 : kernel used to compute the covariance matrix of the mean GP at corresponding timestamps (K_0)
-  ## m_k : prior value of the mean parameter of the mean GPs (mu_k). Length = 1 or nrow(db)
+  ## kern_i : kernel used to compute the covariance matrix of individuals GP at corresponding timestamps (Psi_i)
+  ## m_k : prior value of the mean parameter of the mean GPs (mu_k). Length = 1 or nrow(unique(db$Timestamp))
+  ## common_hp_k : boolean indicating whether hp are common among mean GPs (for each mu_k)
+  ## common_hp_i : boolean indicating whether hp are common among individual GPs (for each y_i)
   ####
-  ## return : set of optimised hyper parameters for the different kernels of the model
+  ## return : set of optimised hyper parameters for the different kernels of the model, and the pi_k
   list_ID_k = names(m_k)
   list_ID_i = unique(db$ID)
-  
+  browser()
   t1 = Sys.time()
   if(common_hp_k)
   {
-    param = c(opm(old_hp$theta_k[[1]], logL_GP_mod_common_hp, gr = gr_GP_mod_common_hp_k, db = list_mu_param$mean,
+    param = c(opm(old_hp$theta_k[[1]], logL_GP_mod_common_hp_k, gr = gr_GP_mod_common_hp_k, db = list_mu_param$mean,
                   mean = m_k, kern = kern_0, new_cov = list_mu_param$cov, method = "L-BFGS-B",
                   control = list(kkt = F))[1,1:2] %>% unlist(), 0.1)
     new_theta_k = param %>% list() %>% rep(length(list_ID_k))  %>% setNames(nm = list_ID_k) 
@@ -425,7 +504,7 @@ m_step_VEM = function(db, old_hp, list_mu_param, kern_0, kern_i, m_k, common_hp_
   {
     funloop = function(k)
     {
-      c(opm(old_hp$theta_k[[k]][1:2], logL_GP_mod, gr = gr_GP_mod ,  db = list_mu_param$mean[[k]],
+      c(opm(old_hp$theta_k[[k]][1:2], logL_GP_mod, gr = gr_GP_mod,  db = list_mu_param$mean[[k]],
                           mean = m_k[[k]], kern = kern_0, new_cov = list_mu_param$cov[[k]] , method = "L-BFGS-B",
                           control = list(kkt = FALSE))[1,1:2] %>% unlist(), 0.1) %>% return()
     }
@@ -435,8 +514,8 @@ m_step_VEM = function(db, old_hp, list_mu_param, kern_0, kern_i, m_k, common_hp_
   
   if(common_hp_i)
   {
-    param = opm(old_hp$theta_i[[1]], logL_GP_mod_common_hp, gr = gr_GP_mod_common_hp_i , db = db, mean = mean,
-                kern = kern_i, new_cov = cov, method = "L-BFGS-B", control = list(kkt = F))[1,1:3]
+    param = opm(old_hp$theta_i[[1]], logL_clust_multi_GP_common_i, gr = gr_clust_multi_GP_common_i, db = db,
+                mu_k_param = list_mu_param, kern = kern_i, method = "L-BFGS-B", control = list(kkt = F))[1,1:3]
     new_theta_i = param %>% list() %>% rep(length(list_ID_i))  %>% setNames(nm = list_ID_i) 
   }
   else
@@ -444,9 +523,8 @@ m_step_VEM = function(db, old_hp, list_mu_param, kern_0, kern_i, m_k, common_hp_
     funloop2 = function(i)
     {
       t_i = db %>% filter(ID == i) %>% pull(Timestamp)
-      opm(old_hp$theta_i[[i]] %>% unlist(), logL_clust_multi_GP, gr = , db = db %>% filter(ID == i),
-          mu_k_param = list_mu_param, kern = kern_i, method = "L-BFGS-B", 
-          control = list(kkt = F, maxit = 30))[1,1:3] %>% return()
+      opm(old_hp$theta_i[[i]] %>% unlist(), logL_clust_multi_GP, gr = gr_clust_multi_GP, db = db %>% filter(ID == i),
+          mu_k_param = list_mu_param, kern = kern_i, method = "L-BFGS-B", control = list(kkt = F, maxit = 30))[1,1:3] %>% return()
     }
     new_theta_i = sapply(list_ID_i, funloop2, simplify = FALSE, USE.NAMES = TRUE)
   }
@@ -540,22 +618,23 @@ update_tau_i_k_VEM = function(db, m_k, mean_k, cov_k, kern_i, hp, pi_k)
 # fu = update_mean_VEM(100, prior_inv_test, list_inv_i_test, list_value_i_test, tau_i_k_test)
 # solve(bla) %*% fu
 ### Test EM functions
-# ini_hp_test = list('theta_k' = c(2,0.5,0), 'theta_i' = c(1, 1, 0.2))
-# k = seq_len(5)
+# ini_hp_test = list('theta_k' = c(2,0.5,0.1), 'theta_i' = c(1, 1, 0.2))
+# k = seq_len(2)
 # m_k_test = as.vector(rep(45, length(k)), 'list')
 # names(m_k_test) = paste0('K', k)
 # pi_k_test = runif(length(k))
 # pi_k_test = pi_k_test / sum(pi_k_test)
 # hp_test = list('theta_k' = ini_hp_test$theta_k %>% list() %>% rep(length(names(m_k_test)))  %>% setNames(nm = names(m_k_test)),
-#                'theta_i' = ini_hp_test$theta_i %>% list() %>% rep(length(unique(db_train$ID)))  %>% setNames(nm = unique(db_train$ID)))
+#                'theta_i' = ini_hp_test$theta_i %>% list() %>% rep(length(unique(db_train$ID)))  %>% setNames(nm = unique(db_train$ID)),
+#                'pi_k' = pi_k_test)
 # 
 # tau_i_k_test = replicate(length(k), runif(length(unique(db_train$ID)))) %>%
 #                apply(2,function(x) x / sum(x)) %>%
 #               `colnames<-`(paste0('K', k)) %>%
 #               `rownames<-`(unique(db_train$ID)) %>%
 #               apply(2, as.list)
-
-# e_step_VEM(db_train, m_k_test, kernel_mu, kernel, hp_test, tau_i_k_test, pi_k_test)
+# 
+# e_step_VEM(db_train, m_k_test, kernel_mu, kernel, hp_test, tau_i_k_test)
 #
-# list_mu_param_test = e_step_VEM(db_train, m_k_test, kernel_mu, kernel, hp_test, tau_i_k_test, pi_k_test)
-# m_step_VEM(db_train, hp_test, list_mu_param_test, kernel_mu, kernel, m_k_test, tau_i_k_test)
+# list_mu_param_test = e_step_VEM(db_train, m_k_test, kernel_mu, kernel, hp_test, tau_i_k_test)
+# m_step_VEM(db_train, hp_test, list_mu_param_test, kernel_mu, kernel, m_k_test, common_hp_k, common_hp_i)

@@ -19,6 +19,7 @@ training_VEM = function(db, prior_mean_k, ini_hp, kern_0, kern_i, ini_tau_i_k, c
   ## return : list of trained HP, boolean to indicate convergence
   n_loop_max = 25
   list_ID = unique(db_train$ID)
+  
   ID_k = names(prior_mean_k)
   hp_test = list('theta_k' = ini_hp$theta_k %>% list() %>% rep(length(ID_k))  %>% setNames(nm = ID_k), 
             'theta_i' = ini_hp$theta_i %>% list() %>% rep(length(list_ID))  %>% setNames(nm = list_ID))
@@ -261,15 +262,15 @@ db_obs = simu_indiv(ID = (M+1) %>% as.character(), sample(seq(10, 20, 0.01), N, 
 # ini_hp = list('theta_k' = c(1,1), 'theta_i' = c(1, 1, 0.2))
 # 
 # #### TEST ####
-k = seq_len(2)
-tau_i_k_test = replicate(length(k), rep(1,length(unique(db_train$ID)))) %>%
-  apply(1,function(x) x / sum(x)) %>%
-  `rownames<-`(paste0('K', k)) %>%
-  `colnames<-`(unique(db_train$ID)) %>%
-  apply(1, as.list)
-
-prior_mean_k = list('K1' = 0, 'K2' = 1)
-ini_hp_test = list('theta_k' = c(2, 0.5, 0.1), 'theta_i' = c(1, 1, 0.2))
+# k = seq_len(2)
+# tau_i_k_test = replicate(length(k), rep(1,length(unique(db_train$ID)))) %>%
+#   apply(1,function(x) x / sum(x)) %>%
+#   `rownames<-`(paste0('K', k)) %>%
+#   `colnames<-`(unique(db_train$ID)) %>%
+#   apply(1, as.list)
+# 
+# prior_mean_k = list('K1' = 0, 'K2' = 1)
+# ini_hp_test = list('theta_k' = c(2, 0.5, 0.1), 'theta_i' = c(1, 1, 0.2))
 # ## Training
 # t1 = Sys.time()
 # training_test = training_VEM(db_train, prior_mean_k, ini_hp_test, kernel_mu, kernel, tau_i_k_test)

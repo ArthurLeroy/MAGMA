@@ -40,15 +40,15 @@ for(i in 2:M)
 {
   k = i %% 5
   if(k == 0){db_train = rbind(db_train, simu_indiv(ID = as.character(i), t[i,], kernel_mu, theta = c(2,2), mean = 45, var = 0.6))}
-  if(k == 1){db_train = rbind(db_train, simu_indiv(ID = as.character(i), t[i,], kernel_mu, theta = c(2,1), mean = 40, var = 0.2))}
-  if(k == 2){db_train = rbind(db_train, simu_indiv(ID = as.character(i), t[i,], kernel_mu, theta = c(3,2), mean = 50, var = 0.3))}
-  if(k == 3){db_train = rbind(db_train, simu_indiv(ID = as.character(i), t[i,], kernel_mu, theta = c(1,2), mean = 35, var = 0.4))}
-  if(k == 4){db_train = rbind(db_train, simu_indiv(ID = as.character(i), t[i,], kernel_mu, theta = c(1,1), mean = 55, var = 0.5))}
+  if(k == 1){db_train = rbind(db_train, simu_indiv(ID = as.character(i), t[i,], kernel_mu, theta = c(2,1), mean = 45, var = 0.2))}
+  if(k == 2){db_train = rbind(db_train, simu_indiv(ID = as.character(i), t[i,], kernel_mu, theta = c(3,2), mean = 45, var = 0.3))}
+  if(k == 3){db_train = rbind(db_train, simu_indiv(ID = as.character(i), t[i,], kernel_mu, theta = c(1,2), mean = 45, var = 0.4))}
+  if(k == 4){db_train = rbind(db_train, simu_indiv(ID = as.character(i), t[i,], kernel_mu, theta = c(1,1), mean = 45, var = 0.5))}
 }
 
 
 db_obs = simu_indiv(ID = (M+1) %>% as.character(), sample(seq(10, 20, 0.5), N, replace = F) %>% sort(),
-                    kernel_mu, theta = c(2,1), mean = 40, var = 0.2)
+                    kernel_mu, theta = c(2,1), mean = 45, var = 0.2)
 
 # ################ INITIALISATION ######################
 ini_hp = list('theta_0' = c(1,1), 'theta_i' = c(1, 1, 0.2))
@@ -77,23 +77,22 @@ training = function(db, prior_mean, ini_hp, kern_0, kern_i, common_hp = T)
     param = e_step(db, prior_mean, kern_0, kern_i, hp)   
     
     ## Monitoring of the LL
-    new_logLL_monitoring = logL_monitoring(hp, db, kern_i, kern_0, param$mean, param$cov, m_0 = prior_mean) - 
-                            0.5 * ( nrow(param$cov) + log(det(param$cov)) ) 
+    new_logLL_monitoring = logL_monitoring(hp, db, kern_i, kern_0, param$mean, param$cov, m_0 = prior_mean) +
+                           0.5 * log(det(param$cov))
     
     c(new_logLL_monitoring) %>% print()
     
     diff_moni = new_logLL_monitoring - logLL_monitoring
-    #if(diff_moni < 0){stop('Likelihood descreased')}
-    
+    if(diff_moni < 0){stop('Likelihood descreased')}
+
     ## M-Step
     new_hp = m_step(db, hp, mean = param$mean, cov = param$cov, kern_0, kern_i, prior_mean, common_hp)
 
     ## Testing the stoping condition
-    logL_new = logL_monitoring(new_hp, db, kern_i, kern_0, param$mean, param$cov, m_0 = prior_mean)
-    eps = (logL_new - logL_monitoring(hp, db, kern_i, kern_0, param$mean, param$cov, m_0 = prior_mean)) / 
-          abs(logL_new)
+    logL_new_hp = logL_monitoring(new_hp, db, kern_i, kern_0, param$mean, param$cov, m_0 = prior_mean)
+    eps = (logL_new_hp - new_logLL_monitoring) / abs(logL_new_hp)
 
-    if(eps > 0 & eps < 1e-10)
+    if(eps > 0 & eps < 1e-4)
     {
       cv = 'TRUE'
       break
@@ -239,9 +238,9 @@ full_algo = function(db, new_db, timestamps, kern_i, plot = T, prior_mean,
 
 ##### Testing codes ############
 
-### Testing the full_algo function
+## Testing the full_algo function
 # bla = training(db_train, 0, ini_hp, kernel_mu, kernel)
-#  list_hp_test = bla[c('theta_0','theta_i')]
+# list_hp_test = bla[c('theta_0','theta_i')]
 # list_hp_test$theta_0 = c(7,1) ## Because hp of K_0 are crucial and often mistrained
 # blab = full_algo(db_train, db_obs[3:7,], seq(10, 20, 0.05), kernel, plot = T, prior_mean = 0, kern_0 = kernel_mu,
 #           list_hp = list_hp_test, mu = NULL, ini_hp = ini_hp, hp_new_i = hp_one_gp)
@@ -252,11 +251,14 @@ full_algo = function(db, new_db, timestamps, kern_i, plot = T, prior_mean,
 # fu = pred_gp(db_obs[3:7,], seq(10, 20, 0.05), mean_mu = 0 , cov_mu = NULL, kernel,
 #              theta = c(5,2), 0.2)
 # plot_gp(fu, db_obs[3:7,])
-## Testing the training function
-# bla = training(db_train, 45, ini_hp, kernel_mu, kernel, common_hp = T)
+
+# Testing the training function
+# common_hp = F
+# bla = training(db_train, 45, ini_hp, kernel_mu, kernel, common_hp)
 # fu = bla$param$mean$Output
 # names(fu) = paste0('X', bla$param$mean$Timestamp)
-# hp_pred = train_new_gp(db_obs, bla$param$mean, bla$param$cov, ini_hp$theta_i, kernel)
+# hp_pred = list('theta' = bla$theta_i[['1']][1:2], 'sigma' =  bla$theta_i[['1']][[3]])
+# if(!common_hp) hp_pred = train_new_gp(db_obs, bla$param$mean, bla$param$cov, ini_hp$theta_i, kernel)
 # 
 # pred_gp(db_obs[1:3,], timestamps = bla$param$mean$Timestamp, mean_mu = fu %>% as.matrix(),
 #         cov_mu = bla$param$cov, theta = hp_pred$theta, sigma = hp_pred$sigma) %>%

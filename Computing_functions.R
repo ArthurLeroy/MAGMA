@@ -160,9 +160,9 @@ logL_GP_mod = function(hp, db, mean, kern, new_cov)
   ## new_cov : posterior covariance matrix of the mean GP (mu_0). Used to compute correction term (cor_term)
   ####
   ##return : value of the modified Gaussian log-likelihood for one GP as it appears in the model
-  
+
   if(length(mean) == 1){mean = rep(mean, nrow(db))} ## mean is equal for all timestamps
-  sigma = ifelse((length(x) == 3), hp[3], 0.1) ## mean GP (mu_0) is noiseless and thus has only 2 hp
+  sigma = ifelse((length(hp) == 3), hp[[3]], 0.1) ## mean GP (mu_0) is noiseless and thus has only 2 hp
 
   inv =  kern_to_inv(db$Timestamp, kern, theta = hp[1:2], sigma) 
   
@@ -181,8 +181,8 @@ logL_GP_mod_common_hp = function(hp, db, mean, kern, new_cov)
   ####
   ##return : value of the modified Gaussian log-likelihood for the sum of all indiv with same HPs
   
-  sigma = ifelse((length(x) == 3), hp[3], 0.1) ## mean GP is noiseless (0.1 is for computational issues) has only 2 hp
-  
+  sigma = ifelse((length(hp) == 3), hp[[3]], 0.1) ## mean GP is noiseless (0.1 is for computational issues) has only 2 hp
+
   LL_norm = 0
   cor_term = 0
   t_i_old = NULL
@@ -197,7 +197,7 @@ logL_GP_mod_common_hp = function(hp, db, mean, kern, new_cov)
     { ## We update the inverse cov matrix only if necessary (if different timestamps)
       inv =  kern_to_inv(t_i, kern, theta = hp[1:2], sigma)
     }
-    
+
     LL_norm = LL_norm - dmvnorm(y_i, mean %>% filter(Timestamp %in% t_i) %>% pull(Output), inv, log = T) 
     cor_term = cor_term + 0.5 * (inv * new_cov[input_i, input_i]) %>% sum()  ##(0.5 * Trace(inv %*% new_cov))
     
@@ -221,7 +221,7 @@ logL_monitoring = function(hp, db, kern_i, kern_0, mean_mu, cov_mu, m_0 = 0)
   ## for each i. The following code computes and sums these M+1 (modified) gaussian likelihoods.
 
   ll_0 = logL_GP_mod(hp$theta_0, db = mean_mu, mean = m_0, kern_0, cov_mu)
-
+browser()
   funloop = function(i)
   { 
     t_i = db %>% filter(ID == i) %>% pull(Timestamp)
@@ -341,7 +341,7 @@ m_step = function(db, old_hp, mean, cov, kern_0, kern_i, m_0, common_hp)
   t1 = Sys.time()
   new_theta_0 = opm(old_hp$theta_0, logL_GP_mod, gr = gr_GP_mod, db = mean, mean = m_0, kern = kern_0, new_cov = cov,
                     method = "L-BFGS-B", control = list(kkt = FALSE))[1,1:2]
-  
+
   if(common_hp)
   {
     param = opm(old_hp$theta_i[[1]], logL_GP_mod_common_hp, gr = gr_GP_mod_common_hp , db = db, mean = mean,
