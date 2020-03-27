@@ -58,15 +58,15 @@ training = function(db, prior_mean, ini_hp, kern_0, kern_i, common_hp = T)
 
 
 train_new_gp = function(db, mean_mu, cov_mu, ini_hp, kern_i)
-{
-  mean = mean_mu %>% filter(Timestamp %in% db$Timestamp) %>% pull(Output)
+{browser()
+  mean = mean_mu %>% filter(Timestamp %in% db$Timestamp) %>% pull(Output) %>% as.vector
   new_cov = cov_mu[paste0('X', db$Timestamp), paste0('X', db$Timestamp)]
   LL_GP<- function(hp, db, kern) 
   {
     return(-dmvnorm(db$Output, mean, solve(kern_to_cov(db$Timestamp, kern, theta = hp[1:2], sigma = hp[3]) + new_cov),
                     log = T))
   }
-  new_hp = opm(ini_hp, fn = LL_GP, gr = gr_one_GP, kern = kern_i, db = db, method = "L-BFGS-B", control = list(kkt = FALSE)) 
+  new_hp = opm(ini_hp, fn = LL_GP, gr = NULL, kern = kern_i, db = db, method = "L-BFGS-B", control = list(kkt = FALSE)) 
   list('theta' = new_hp[1:2], 'sigma' = new_hp[3]) %>% return()
 }
 
@@ -99,7 +99,7 @@ posterior_mu = function(db, timestamps, m_0, kern_0, kern_i, hp)
   new_mean = new_cov %*% weighted_mean
   
   #names(mean_mu) = paste0('X', t_mu)
-  list('Timestamp' = timestamps, 'Mean' = new_mean, 'Cov' = new_cov) %>% return()
+  list('mean' = tibble('Timestamp' = timestamps, 'Output' = new_mean) , 'cov' = new_cov) %>% return()
 }
 
 pred_gp = function(db, timestamps, mean_mu = NULL , cov_mu = NULL, 
@@ -252,16 +252,20 @@ m_0 = 50
 # plot_gp(fu, db_obs[3:7,])
 
 # Testing the training function
-# common_hp = F
-# bla = training(db_train, 5, ini_hp, kernel_mu, kernel, common_hp)
-# fu = bla$param$mean$Output
-# names(fu) = paste0('X', bla$param$mean$Timestamp)
-# hp_pred = list('theta' = bla$theta_i[['1']][1:2], 'sigma' =  bla$theta_i[['1']][[3]])
-# if(!common_hp) hp_pred = train_new_gp(db_obs, bla$param$mean, bla$param$cov, ini_hp$theta_i, kernel)
-# 
-# pred_gp(db_obs[1:3,], timestamps = bla$param$mean$Timestamp, mean_mu = fu %>% as.matrix(),
-#         cov_mu = bla$param$cov, theta = hp_pred$theta, sigma = hp_pred$sigma) %>%
-#   plot_gp(data = rbind(db_obs[1:10,], db_train)) + geom_point(aes(bla$param$mean$Timestamp, bla$param$mean$Output))
+common_hp = F
+bla = training(db_train, 5, ini_hp, kernel_mu, kernel, common_hp)
+fu = bla$param$mean$Output
+names(fu) = paste0('X', bla$param$mean$Timestamp)
+timestamps = seq(10,20, 0.01)
+post_mu = posterior_mu(db_train, timestamps, m_0 = 40, 
+                       kernel_mu, kernel, list('theta_0' = bla$theta_0, 'theta_i' = bla$theta_i))
+
+hp_pred = list('theta' = bla$theta_i[['1']][1:2], 'sigma' =  bla$theta_i[['1']][[3]])
+if(!common_hp) hp_pred = train_new_gp(db_obs, post_mu$mean, post_mu$cov, ini_hp$theta_i, kernel)
+
+pred_gp(db_obs[1:3,], timestamps = bla$param$mean$Timestamp, mean_mu = fu %>% as.matrix(),
+        cov_mu = bla$param$cov, theta = hp_pred$theta, sigma = hp_pred$sigma) %>%
+  plot_gp(data = rbind(db_obs[1:10,], db_train)) + geom_point(aes(bla$param$mean$Timestamp, bla$param$mean$Output))
 
 # ### Testing update_mean and update_inv
 # grid = seq(0,101,0.619)
