@@ -33,6 +33,11 @@ dmvnorm <- function (x, mu, inv_Sigma, log = FALSE, tol = 1e-06)
   if (log) return(loglik) else return(exp(loglik))
 }
 
+mat_dist = function(x,y)
+{ ## return the matrice of distances between all pairs of vectors in x and y
+  outer(x, y, Vectorize(function(p,q) sum((p - q)^2)) ) %>% return()
+}
+
 ##### KERNELS DEFINITION ######
 kernel = function(mat, theta = c(1, 0.5))
 { ## mat : the matrix M[i,j] =  t(i - j) %*% (i - j), for all i,j in the vector of timestamps
@@ -215,7 +220,7 @@ logL_clust_multi_GP = function(hp, db, mu_k_param, kern)
   inv =  kern_to_inv(db$Timestamp, kern, theta = hp[1:2], sigma) 
 
   LL_norm = - dmvnorm(y_i, rep(0, length(y_i)), inv, log = T) ## classic gaussian centered loglikelihood
-
+  
   corr1 = 0
   corr2 = 0
   
@@ -226,10 +231,11 @@ logL_clust_multi_GP = function(hp, db, mu_k_param, kern)
     corr1 = corr1 + tau_i_k * mean_mu_k
     corr2 = corr2 + tau_i_k * ( mean_mu_k %*% t(mean_mu_k) + mu_k_param$cov[[k]][paste0('X', t_i), paste0('X', t_i)] )
   }
+
   return( LL_norm - y_i %*% inv %*% corr1 + 0.5 * sum(inv * corr2) )
 }
 
-logL_clust_multi_GP_common_i = function(hp, db, mu_k_param, kern)
+logL_clust_multi_GP_common_hp_i = function(hp, db, mu_k_param, kern)
 { ## hp : vector or list of parameters of the kernel with format (a, b, sigma)
   ## db : tibble containing values we want to compute logL on. Required columns : Timestamp, Output
   ## mu_k_param : list of parameters for the K mean Gaussian processes
@@ -241,20 +247,6 @@ logL_clust_multi_GP_common_i = function(hp, db, mu_k_param, kern)
   names_k = mu_k_param$mean %>% names()
   t = unique(db$Timestamp)
   
-  corr1 = 0
-  corr2 = 0
-  
-  for(k in seq_len(length(names_k)))
-  {
-    tau_i_k = mu_k_param$tau_i_k[[k]][[i]]
-    mean_mu_k = mu_k_param$mean[[k]] %>% filter(Timestamp %in% t) %>% pull(Output)
-    corr1 = corr1 + tau_i_k * mean_mu_k
-    corr2 = corr2 + tau_i_k * ( mean_mu_k %*% t(mean_mu_k) + mu_k_param$cov[[k]][paste0('X', t), paste0('X', t)] )
-  }
-  names(corr1) = paste0('X', t)
-  colnames(corr2) = paste0('X', t)
-  rownames(corr2) = paste0('X', t)
-
   sum_i = 0
   t_i_old = NULL
   
@@ -264,13 +256,25 @@ logL_clust_multi_GP_common_i = function(hp, db, mu_k_param, kern)
     input_i = paste0('X', t_i)
     y_i = db %>% filter(ID == i) %>% pull(Output)
     
+    corr1 = 0
+    corr2 = 0
+    
+    for(k in seq_len(length(names_k)))
+    {
+      tau_i_k = mu_k_param$tau_i_k[[k]][[i]]
+      mean_mu_k = mu_k_param$mean[[k]] %>% filter(Timestamp %in% t_i) %>% pull(Output)
+      corr1 = corr1 + tau_i_k * mean_mu_k
+      corr2 = corr2 + tau_i_k * ( mean_mu_k %*% t(mean_mu_k) + mu_k_param$cov[[k]][input_i, input_i] )
+    }
+    
     if( !identical(t_i, t_i_old) )
     {
       inv = kern_to_inv(t_i, kern, theta = hp[1:2], sigma) 
     }
     LL_norm = - dmvnorm(y_i, rep(0, length(y_i)), inv, log = T) ## classic gaussian centered loglikelihood
-    
-    sum_i = sum_i + LL_norm - y_i %*% inv %*% corr1[input_i] + 0.5 * sum(inv * corr2[input_i,input_i]) 
+
+    sum_i = sum_i + LL_norm - y_i %*% inv %*% corr1 + 0.5 * sum(inv * corr2) 
+
   }
   return(sum_i)
 }
@@ -402,9 +406,11 @@ gr_clust_multi_GP = function(hp, db, mu_k_param, kern)
   else   (- c(g_1, g_2)) %>% return()
 }  
 
-gr_clust_multi_GP_common_hp_i = function(hp, db, mean, kern, new_cov)
+gr_clust_multi_GP_common_hp_i = function(hp, db, mu_k_param, kern)
 { 
-  sigma = ifelse((length(hp) == 3), hp[[3]], 0.1)
+  sigma = ifelse((length(hp) == 3), hp[[3]], 0.1) ## mean GP (mu_0) is noiseless and thus has only 2 hp
+  names_k = mu_k_param$mean %>% names()
+
   g_1 = 0
   g_2 = 0
   g_3 = 0
@@ -412,29 +418,42 @@ gr_clust_multi_GP_common_hp_i = function(hp, db, mean, kern, new_cov)
   
   for(i in unique(db$ID))
   {
+    
     t_i = db %>% filter(ID == i) %>% pull(Timestamp)
     input_i = paste0('X', t_i)
     y_i = db %>% filter(ID == i) %>% pull(Output)
+
+    corr1 = 0
+    corr2 = 0
     
+    for(k in seq_len(length(names_k)))
+    {
+      tau_i_k = mu_k_param$tau_i_k[[k]][[i]]
+      mean_mu_k = mu_k_param$mean[[k]] %>% filter(Timestamp %in% t_i) %>% pull(Output)
+      corr1 = corr1 + tau_i_k * mean_mu_k
+      corr2 = corr2 + tau_i_k * ( mean_mu_k %*% t(mean_mu_k) + mu_k_param$cov[[k]][input_i, input_i] )
+    }
+
     if( !identical(t_i, t_i_old) )
     { ## We update the inverse cov matrix only if necessary (if different timestamps)
       inv = kern_to_inv(t_i, kern, theta = hp[1:2], sigma)
     }
-    prod_inv = inv %*% (y_i - mean %>% filter(Timestamp %in% t_i) %>% pull(Output)) 
-    cste_term = prod_inv %*% t(prod_inv) + inv %*% 
-      ( new_cov[input_i,input_i] %*% inv - diag(1, length(t_i)) )
+    
+    prod_inv = inv %*% y_i 
+    cste_term = (prod_inv - 2 * inv %*% corr1) %*% t(prod_inv)  + 
+                 inv %*% ( corr2 %*% inv - diag(1, length(t_i)) )
     
     g_1 = g_1 + 1/2 * (cste_term %*% kern_to_cov(t_i, deriv_hp1, theta = hp[1:2], sigma = 0)) %>%  diag() %>% sum()
-    g_2 = g_2 + 1/2 * (cste_term %*% as.matrix(deriv_hp2(dist(t_i)^2, theta = hp[1:2]) )) %>%  diag() %>% sum()
+    g_2 = g_2 + 1/2 * (cste_term %*% as.matrix(deriv_hp2(dist(t_i)^2, theta = hp[1:2]) ))  %>%  diag() %>% sum()
     
-    t_i_old = t_i
     if(length(hp) == 3)
     {
       g_3 = g_3 + hp[[3]] * (cste_term %>% diag() %>% sum() )
     }
-  }
-  if(length(hp) == 3) return(- c(g_1, g_2, g_3)) else  return(- c(g_1, g_2))
-} ## Reste à coder
+    t_i_old = t_i
+  }  
+  if(length(hp) == 3) return(- c(g_1, g_2, g_3)) else return(- c(g_1, g_2))
+} 
 
 ##### EM FUNCTIONS #########
 e_step_VEM = function(db, m_k, kern_0, kern_i, hp, old_tau_i_k)
@@ -491,7 +510,7 @@ m_step_VEM = function(db, old_hp, list_mu_param, kern_0, kern_i, m_k, common_hp_
   ## return : set of optimised hyper parameters for the different kernels of the model, and the pi_k
   list_ID_k = names(m_k)
   list_ID_i = unique(db$ID)
-  browser()
+
   t1 = Sys.time()
   if(common_hp_k)
   {
@@ -514,7 +533,7 @@ m_step_VEM = function(db, old_hp, list_mu_param, kern_0, kern_i, m_k, common_hp_
   
   if(common_hp_i)
   {
-    param = opm(old_hp$theta_i[[1]], logL_clust_multi_GP_common_i, gr = gr_clust_multi_GP_common_i, db = db,
+    param = opm(old_hp$theta_i[[1]], logL_clust_multi_GP_common_hp_i, gr = gr_clust_multi_GP_common_hp_i, db = db,
                 mu_k_param = list_mu_param, kern = kern_i, method = "L-BFGS-B", control = list(kkt = F))[1,1:3]
     new_theta_i = param %>% list() %>% rep(length(list_ID_i))  %>% setNames(nm = list_ID_i) 
   }
@@ -524,7 +543,7 @@ m_step_VEM = function(db, old_hp, list_mu_param, kern_0, kern_i, m_k, common_hp_
     {
       t_i = db %>% filter(ID == i) %>% pull(Timestamp)
       opm(old_hp$theta_i[[i]] %>% unlist(), logL_clust_multi_GP, gr = gr_clust_multi_GP, db = db %>% filter(ID == i),
-          mu_k_param = list_mu_param, kern = kern_i, method = "L-BFGS-B", control = list(kkt = F, maxit = 30))[1,1:3] %>% return()
+          mu_k_param = list_mu_param, kern = kern_i, method = "L-BFGS-B", control = list(kkt = F))[1,1:3] %>% return()
     }
     new_theta_i = sapply(list_ID_i, funloop2, simplify = FALSE, USE.NAMES = TRUE)
   }
@@ -556,8 +575,8 @@ update_inv_VEM = function(prior_inv, list_inv_i, tau_i_k)
 }
 
 update_mean_VEM = function(prior_mean, prior_inv, list_inv_i, list_value_i, tau_i_k)
-{ ## prior_mean : mean parameter of the prior mean GP (mu_0)
-  ## prior_inv : inverse of the covariance matrix of the prior mean GP (mu_0). dim = (all timestamps)^2 
+{ ## prior_mean : mean parameter of the prior mean GP (mu_k)
+  ## prior_inv : inverse of the covariance matrix of the prior mean GP (mu_k). dim = (all timestamps)^2 
   ## list_inv_i : list of inverse of the covariance matrices of each individuals. dim = (timestamps of i)^2  
   ## list_value_i : list of outputs (y_i) for each individuals. dim = (timestamps of i) x 1
   ## tau_i_k : list of probability for each indiv 'i' to belong to cluster k 
@@ -568,9 +587,9 @@ update_mean_VEM = function(prior_mean, prior_inv, list_inv_i, list_value_i, tau_
   weighted_mean = prior_inv %*% prior_mean
   #row.names(weithed_mean) = row.names(prior_inv)
   
-  for(x in list_inv_i %>% names()) 
+  for(i in list_inv_i %>% names()) 
   {
-    weighted_i = tau_i_k[[x]] * list_inv_i[[x]] %*% list_value_i[[x]]
+    weighted_i = tau_i_k[[i]] * list_inv_i[[i]] %*% list_value_i[[i]]
     #row.names(weithed_i) = row.names(list_inv_i[[j]])
     
     common_times = intersect(row.names(weighted_i), row.names(weighted_mean))

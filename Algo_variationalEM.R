@@ -21,7 +21,7 @@ training_VEM = function(db, prior_mean_k, ini_hp, kern_0, kern_i, ini_tau_i_k, c
   list_ID = unique(db_train$ID)
   
   ID_k = names(prior_mean_k)
-  hp_test = list('theta_k' = ini_hp$theta_k %>% list() %>% rep(length(ID_k))  %>% setNames(nm = ID_k), 
+  hp = list('theta_k' = ini_hp$theta_k %>% list() %>% rep(length(ID_k))  %>% setNames(nm = ID_k), 
             'theta_i' = ini_hp$theta_i %>% list() %>% rep(length(list_ID))  %>% setNames(nm = list_ID))
   cv = 'FALSE'
   tau_i_k = ini_tau_i_k
@@ -33,7 +33,7 @@ training_VEM = function(db, prior_mean_k, ini_hp, kern_0, kern_i, ini_tau_i_k, c
     print(i)
     ## E-Step
     param = e_step_VEM(db, prior_mean_k, kern_0, kern_i, hp, tau_i_k)  
-    browser()
+
     ## Monitoring of the LL
     (new_logLL_monitoring = logL_monitoring(hp, db, kern_i, kern_0, mu_k_param = param , m_k = prior_mean_k) + 
                             0.5 * (length(param$cov) * nrow(param$cov[[1]]) +
@@ -140,23 +140,26 @@ pred_gp_clust = function(db, timestamps, list_mu, kern, hp)
   input = db %>% pull(Input)
   yn = db %>% pull(Output)
   input_t = paste0('X', timestamps)
-  all_times = union(tn,timestamps)
   
-  if(is.null(cov_mu))
+  theta = hp$theta
+  sigma = hp$sigma
+  tau_k = hp$tau_k
+  
+  mean = 0
+  cov = 0
+  for(k in list_mu$mean %>% names())
   {
-    cov_mu = matrix(0, length(all_times), length(all_times),
-                    dimnames = list(paste0('X', all_times), paste0('X', all_times)))
+    mean_mu_obs = list_mu$mean[[k]] %>% filter(Timestamp %in% tn) %>% pull(Output)
+    mean_mu_pred = list_mu$mean[[k]] %>% filter(Timestamp %in% timestamps) %>% pull(Output)
+    cov_mu = list_mu$cov[[k]]
+    inv_mat = (kern_to_cov(tn, kern, theta, sigma) + cov_mu[input, input]) %>% solve() 
+    cov_tn_t = kern(mat_dist(tn, timestamps), theta) + cov_mu[input,input_t]
+    cov_t_t = kern_to_cov(timestamps, kern, theta, sigma) + cov_mu[input_t ,input_t] 
+    
+    mean = mean + tau_k[[k]] * (mean_mu_pred + t(cov_tn_t) %*% inv_mat %*% (yn - mean_mu_obs) %>% as.vector())
+    cov = cov + tau_k[[k]] * (cov_t_t - t(cov_tn_t) %*% inv_mat %*% cov_tn_t) %>% diag() 
   }
-  if(is.null(mean_mu)){mean_mu = matrix(0, length(all_times), 1, dimnames = list(paste0('X', all_times)))}
-  if(length(mean_mu) == 1){mean_mu = matrix(mean_mu, length(all_times), 1, dimnames = list(paste0('X', all_times)))}
-  
-  inv_mat = (kern_to_cov(tn, kern, theta, sigma) + cov_mu[input, input]) %>% solve()
-  cov_tn_t = kern(mat_dist(tn, timestamps), theta) + cov_mu[input,input_t]
-  cov_t_t = kern(mat_dist(timestamps, timestamps), theta) + cov_mu[input_t ,input_t]
-  
-  tibble('Timestamp' = timestamps,
-         'Mean' = mean_mu[input_t,] + t(cov_tn_t) %*% inv_mat %*% (yn - mean_mu[input,]) %>% as.vector(),
-         'Var' = (cov_t_t - t(cov_tn_t) %*% inv_mat %*% cov_tn_t) %>% diag()) %>% return()
+  tibble('Timestamp' = timestamps, 'Mean' = mean, 'Var' = cov) %>% return()
 }
 
 ################ PLOT FUNCTIONS ######################
@@ -239,7 +242,7 @@ simu_indiv = function(ID, t, kern = kernel_mu, theta, mean, var)
 
 #set.seed(42)
 M = 10
-N = 1000
+N = 10
 t = matrix(0, ncol = N, nrow = M)
 for(i in 1:M){t[i,] = sample(seq(10, 20, 0.01),N, replace = F) %>% sort()}
 
@@ -269,17 +272,21 @@ db_obs = simu_indiv(ID = (M+1) %>% as.character(), sample(seq(10, 20, 0.01), N, 
 #   `colnames<-`(unique(db_train$ID)) %>%
 #   apply(1, as.list)
 # 
-# prior_mean_k = list('K1' = 0, 'K2' = 1)
+# prior_mean_k = list('K1' = 42, 'K2' = 45)
 # ini_hp_test = list('theta_k' = c(2, 0.5, 0.1), 'theta_i' = c(1, 1, 0.2))
-# ## Training
+# common_hp_k = T
+# common_hp_i = T
+## Training
 # t1 = Sys.time()
-# training_test = training_VEM(db_train, prior_mean_k, ini_hp_test, kernel_mu, kernel, tau_i_k_test)
+# training_test = training_VEM(db_train, prior_mean_k, ini_hp_test, kernel_mu, kernel,
+#                              tau_i_k_test, common_hp_k, common_hp_i)
 # t2 = Sys.time()
 # c_time = (t2-t1) %>% print()
 # ## Posterior mu_k
 # timestamps = seq(10, 20, 0.01)
 # post_test = posterior_mu_k(db_train, timestamps, prior_mean_k, kernel_mu, kernel, training_test)
 # ## Pred GP
-# pred_gp_clust(db, timestamps, list_mu, kern = kernel, hp)
-# ## Plot GP
+# pred_gp_clust(db_obs, timestamps, post_test, kern = kernel,
+#              list('theta' = c(2,1), 'sigma' = 0.2, 'tau_k' = list('K1' = 0.4, 'K2' = 0.6) ))
+## Plot GP
 

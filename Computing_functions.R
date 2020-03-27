@@ -206,7 +206,7 @@ logL_GP_mod_common_hp = function(hp, db, mean, kern, new_cov)
   return(LL_norm + cor_term)
 }
 
-logL_monitoring = function(hp, db, kern_i, kern_0, mean_mu, cov_mu, m_0 = 0)
+logL_monitoring = function(hp, db, kern_i, kern_0, mean_mu, cov_mu, m_0)
 { ## hp : list of parameters of the kernel for each individuals. Format : list(theta_0, list(theta_i)_i)
   ## db : tibble containing values we want to compute logL on. Required columns : Timestamp, Output
   ## kern_i : kernel used to compute the covariance matrix of individuals GP at corresponding timestamps (Psi_i)
@@ -221,16 +221,16 @@ logL_monitoring = function(hp, db, kern_i, kern_0, mean_mu, cov_mu, m_0 = 0)
   ## for each i. The following code computes and sums these M+1 (modified) gaussian likelihoods.
 
   ll_0 = logL_GP_mod(hp$theta_0, db = mean_mu, mean = m_0, kern_0, cov_mu)
-browser()
+
   funloop = function(i)
   { 
     t_i = db %>% filter(ID == i) %>% pull(Timestamp)
     logL_GP_mod(hp$theta_i[[i]], db %>% filter(ID == i),
                 mean = mean_mu %>% filter(Timestamp %in% t_i) %>% pull(Output),
-                kern_i, cov_mu[paste0('X', t_i), paste0('X', t_i)]) %>%
-    return()
+                kern_i, cov_mu[paste0('X', t_i), paste0('X', t_i)]) %>% return()
   }
   sum_ll_i = sapply(unique(db$ID), funloop) %>% sum()
+  
   return(-ll_0 - sum_ll_i)
 }
 
@@ -312,7 +312,7 @@ e_step = function(db, m_0, kern_0, kern_i, hp)
   ####
   ## return : mean and covariance parameters of the mean GP (mu_0)
   all_t = unique(db$Timestamp) %>% sort()
-  inv_0 = kern_to_inv(all_t, kern_0, hp$theta_0, sigma = 0.01)
+  inv_0 = kern_to_inv(all_t, kern_0, hp$theta_0, sigma = 0.1)
   inv_i = kern_to_inv(db, kern_i, hp$theta_i, sigma = 0)
   value_i = base::split(db$Output, list(db$ID))
 
@@ -378,7 +378,7 @@ update_inv = function(prior_inv, list_inv_i)
   for(x in list_inv_i)
   {
     inv_i = x
-    common_times = intersect(row.names(x), row.names(new_inv))
+    common_times = intersect(row.names(inv_i), row.names(new_inv))
     new_inv[common_times, common_times] = new_inv[common_times, common_times] + inv_i[common_times, common_times]
   }
   return(new_inv)
@@ -396,66 +396,13 @@ update_mean = function(prior_mean, prior_inv, list_inv_i, list_value_i)
   weighted_mean = prior_inv %*% prior_mean
   #row.names(weithed_mean) = row.names(prior_inv)
 
-  for(j in length(list_value_i) %>% seq_len()) 
+  for(i in list_inv_i %>% names()) 
   {
-    weighted_i = list_inv_i[[j]] %*% list_value_i[[j]]
-    #row.names(weithed_i) = row.names(list_inv_i[[j]])
+    weighted_i = list_inv_i[[i]] %*% list_value_i[[i]]
+    #row.names(weithed_i) = row.names(list_inv_i[[i]])
     
     common_times = intersect(row.names(weighted_i), row.names(weighted_mean))
-    
     weighted_mean[common_times,] = weighted_mean[common_times,] + weighted_i[common_times,]
   }
   return(weighted_mean)
 }
-
-
-##### Old functions #####
-# kern_to_cov = function(x, kern = kernel, theta = list(1, 0.5), sigma = 0.2)
-# { ## x : vector or tibble of all timestamps for each individuals (input vector). 2 columns, 'ID' and 'Timestamp' required
-# ## kern : indicates which kernel function to use to compute the covariance matrix
-# ## theta : list of the required hyperparameters
-# ## return : list of inverse covariance matrices (1 by individual) of the input vectors according to kernel() function
-# 
-# ## If user uses kern_to_cov() directly with an observation's vector for one individual
-# if(is.vector(x))
-# { 
-#   x = x %>% sort()
-#   mat = sapply(x, function(t) sapply(x, function(s) kern(t, s, theta = theta))) + diag(sigma^2, length(x))
-#   if(mat %>% dim() %>% is.null()){mat = as.matrix(mat)}
-#   rownames(mat) = paste0('X', x)
-#   colnames(mat) = paste0('X', x)
-#   return(mat)
-# }
-# 
-# ## If the tibble is composed of observations from only one individual
-# if(x %>% pull(ID) %>% unique() %>% length() == 1)
-# {
-#   x = x %>% arrange(Timestamp)
-#   mat = sapply(x$Timestamp, function(t) sapply(x$Timestamp, function(s) kern(t, s, theta = theta))) + 
-#     diag(sigma^2, nrow(x))
-#   if(mat %>% dim() %>% is.null()){mat = as.matrix(mat)}
-#   rownames(mat) = paste0('X', x$Timestamp)
-#   colnames(mat) = paste0('X', x$Timestamp)
-#   return(mat)
-# }
-# 
-# ## If the tibble is composed of observations from different individuals, identified by a variable 'ID'
-# ## In this case, the list of HP must provide a set of HP for each individuals
-# else
-# { 
-#   loop = function(i)
-#   {
-#     indiv = x %>% filter(ID == i) %>% arrange(Timestamp) %>% pull(Timestamp)
-#     
-#     mat = sapply(indiv, function(t) sapply(indiv, function(s) kern(t, s, theta[[i]][1:2]))) +
-#       diag((theta[[i]][3])^2, length(indiv))
-#     
-#     if(mat %>% dim() %>% is.null()){mat = as.matrix(mat)}
-#     rownames(mat) = paste0('X', indiv)
-#     colnames(mat) = paste0('X', indiv)
-#     return(mat)
-#   }
-#   list_mat = lapply(unique(x$ID), loop)
-#   return(list_mat)
-# } 
-# }
