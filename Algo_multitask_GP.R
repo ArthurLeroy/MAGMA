@@ -58,7 +58,7 @@ training = function(db, prior_mean, ini_hp, kern_0, kern_i, common_hp = T)
 
 
 train_new_gp = function(db, mean_mu, cov_mu, ini_hp, kern_i)
-{browser()
+{
   mean = mean_mu %>% filter(Timestamp %in% db$Timestamp) %>% pull(Output) %>% as.vector
   new_cov = cov_mu[paste0('X', db$Timestamp), paste0('X', db$Timestamp)]
   LL_GP<- function(hp, db, kern) 
@@ -118,6 +118,8 @@ pred_gp = function(db, timestamps, mean_mu = NULL , cov_mu = NULL,
   yn = db %>% pull(Output)
   input_t = paste0('X', timestamps)
   all_times = union(tn,timestamps)
+  mean_mu_obs = mean_mu %>%  filter(Timestamp %in% tn) %>% pull(Output)
+  mean_mu_pred = mean_mu %>% filter(Timestamp %in% timestamps) %>% pull(Output)
   
   if(is.null(cov_mu))
   {
@@ -132,7 +134,7 @@ pred_gp = function(db, timestamps, mean_mu = NULL , cov_mu = NULL,
   cov_t_t = kern_to_cov(timestamps, kern, theta, sigma) + cov_mu[input_t ,input_t]
 
   tibble('Timestamp' = timestamps,
-         'Mean' = mean_mu[input_t,] + t(cov_tn_t) %*% inv_mat %*% (yn - mean_mu[input,]) %>% as.vector(),
+         'Mean' = mean_mu_pred + t(cov_tn_t) %*% inv_mat %*% (yn - mean_mu_obs) %>% as.vector(),
          'Var' = (cov_t_t - t(cov_tn_t) %*% inv_mat %*% cov_tn_t) %>% diag()) %>% return()
 }
 
@@ -263,8 +265,8 @@ post_mu = posterior_mu(db_train, timestamps, m_0 = 40,
 hp_pred = list('theta' = bla$theta_i[['1']][1:2], 'sigma' =  bla$theta_i[['1']][[3]])
 if(!common_hp) hp_pred = train_new_gp(db_obs, post_mu$mean, post_mu$cov, ini_hp$theta_i, kernel)
 
-pred_gp(db_obs[1:3,], timestamps = bla$param$mean$Timestamp, mean_mu = fu %>% as.matrix(),
-        cov_mu = bla$param$cov, theta = hp_pred$theta, sigma = hp_pred$sigma) %>%
+pred_gp(db_obs[1:3,], timestamps = timestamps, mean_mu = post_mu$mean,
+        cov_mu = post_mu$cov, theta = hp_pred$theta, sigma = hp_pred$sigma) %>%
   plot_gp(data = rbind(db_obs[1:10,], db_train)) + geom_point(aes(bla$param$mean$Timestamp, bla$param$mean$Output))
 
 # ### Testing update_mean and update_inv
