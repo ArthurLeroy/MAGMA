@@ -33,6 +33,11 @@ dmvnorm <- function (x, mu, inv_Sigma, log = FALSE, tol = 1e-06)
   if (log) return(loglik) else return(exp(loglik))
 }
 
+mat_dist = function(x,y)
+{ ## return the matrice of distances between all pairs of vectors in x and y
+  outer(x, y, Vectorize(function(p,q) sum((p - q)^2)) ) %>% return()
+}
+
 ##### KERNELS DEFINITION ######
 kernel = function(mat, theta = c(1, 0.5))
 { ## mat : the matrix M[i,j] =  t(i - j) %*% (i - j), for all i,j in the vector of timestamps
@@ -60,10 +65,18 @@ kern_to_cov = function(x, kern = kernel, theta = c(1, 0.5), sigma = 0.2)
   ## return : list of inverse covariance matrices (1 by individual) of the input vectors according to kernel() function
   
   if(is.vector(x))
-  {   
-    x = x %>% sort()
-    M = dist(x)^2
-    mat = as.matrix(kern(M, theta)) + diag(sigma^2 + exp(theta[[1]]) ,length(x))
+  { 
+    if(length(x) == 1)
+    {
+      mat = sigma^2 + exp(theta[[1]])
+    } 
+    else 
+    {
+      x = x %>% sort()
+      M = dist(x)^2
+      mat = as.matrix(kern(M, theta)) + diag(sigma^2 + exp(theta[[1]]) ,length(x))
+    }
+    
     
     if(mat %>% dim() %>% is.null()){mat = as.matrix(mat)}
     rownames(mat) = paste0('X', x)
@@ -84,9 +97,16 @@ kern_to_cov = function(x, kern = kernel, theta = c(1, 0.5), sigma = 0.2)
       }
       
       indiv = x %>% filter(ID == i) %>% arrange(Timestamp) %>% pull(Timestamp) %>% sort()
-      M = dist(indiv)^2
-      mat = as.matrix(kern(M, theta[[i]][1:2])) + diag(theta[[i]][3]^2 + exp(theta[[i]][1]), length(indiv))
-      
+      if(length(indiv) == 1)
+      {
+        mat = theta[[i]][3]^2 + exp(theta[[i]][1])
+      } 
+      else 
+      {
+        M = dist(indiv)^2
+        mat = as.matrix(kern(M, theta[[i]][1:2])) + diag(theta[[i]][3]^2 + exp(theta[[i]][1]), length(indiv))
+      }
+
       if(mat %>% dim() %>% is.null()){mat = as.matrix(mat)}
       rownames(mat) = paste0('X', indiv)
       colnames(mat) = paste0('X', indiv)
@@ -106,10 +126,17 @@ kern_to_inv = function(x, kern = kernel, theta = c(1, 0.5), sigma = 0.2)
   ####
   ## return : list of inverse covariance matrices (1 by individual) of the input vectors according to kernel() function
   if(is.vector(x))
-  {    
-    x = x %>% sort()
-    M = dist(x)^2
-    mat = as.matrix(kern(M, theta)) + diag(sigma^2 + exp(theta[1]) ,length(x))
+  { 
+    if(length(x) == 1)
+    {
+      mat = sigma^2 + exp(theta[[1]])
+    } 
+    else 
+    {
+      x = x %>% sort()
+      M = dist(x)^2
+      mat = as.matrix(kern(M, theta)) + diag(sigma^2 + exp(theta[[1]]) ,length(x))
+    }
     #inv = tryCatch(solve(mat), error = function(e){MASS::ginv(mat)})
     inv = solve(mat)
     
@@ -132,8 +159,15 @@ kern_to_inv = function(x, kern = kernel, theta = c(1, 0.5), sigma = 0.2)
       }
       
       indiv = x %>% filter(ID == i) %>% arrange(Timestamp) %>% pull(Timestamp) %>% sort()
-      M = dist(indiv)^2
-      mat = as.matrix(kern(M, theta[[i]][1:2])) + diag(theta[[i]][3]^2 + exp(theta[[i]][1]), length(indiv))
+      if(length(indiv) == 1)
+      {
+        mat = theta[[i]][3]^2 + exp(theta[[i]][1])
+      } 
+      else 
+      {
+        M = dist(indiv)^2
+        mat = as.matrix(kern(M, theta[[i]][1:2])) + diag(theta[[i]][3]^2 + exp(theta[[i]][1]), length(indiv))
+      }
       #inv = tryCatch(solve(mat), error = function(e){MASS::ginv(mat)})
       inv = solve(mat)
       

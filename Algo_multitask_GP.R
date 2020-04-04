@@ -36,14 +36,14 @@ training = function(db, prior_mean, ini_hp, kern_0, kern_i, common_hp = T)
     ## Monitoring of the LL
     new_logLL_monitoring = logL_monitoring(hp, db, kern_i, kern_0, param$mean, param$cov, prior_mean) 
                           # + 0.5 * log(det(param$cov))
-    
+    c('logLL = ', new_logLL_monitoring) %>% print()
     diff_moni = new_logLL_monitoring - logLL_monitoring
-    if(diff_moni < 0){stop('Likelihood descreased')}
+    if(diff_moni < - 0.1){stop('Likelihood descreased')}
 
     logL_new_hp = logL_monitoring(new_hp, db, kern_i, kern_0, param$mean, param$cov, prior_mean)
                   #+ 0.5 * log(det(param$cov))
     eps = (logL_new_hp - new_logLL_monitoring) / abs(logL_new_hp)
-    c('logLL = ', new_logLL_monitoring, 'eps =', eps) %>% print()
+    c('eps =', eps) %>% print()
     
     if(eps > 0 & eps < 1e-3)
     {
@@ -59,8 +59,12 @@ training = function(db, prior_mean, ini_hp, kern_0, kern_i, common_hp = T)
 
 train_new_gp = function(db, mean_mu, cov_mu, ini_hp, kern_i)
 {
-  mean = mean_mu %>% filter(Timestamp %in% db$Timestamp) %>% pull(Output) %>% as.vector
-  new_cov = cov_mu[paste0('X', db$Timestamp), paste0('X', db$Timestamp)]
+  if(is.vector(mean_mu)){mean = mean_mu} 
+  else {mean = mean_mu %>% filter(Timestamp %in% db$Timestamp) %>% pull(Output) %>% as.vector}
+  
+  if(is.matrix(cov_mu)){new_cov = cov_mu[paste0('X', db$Timestamp), paste0('X', db$Timestamp)]}
+  else {new_cov = 0}
+  
   LL_GP<- function(hp, db, kern) 
   {
     return(-dmvnorm(db$Output, mean, solve(kern_to_cov(db$Timestamp, kern, theta = hp[1:2], sigma = hp[3]) + new_cov),
@@ -76,7 +80,6 @@ train_new_gp = function(db, mean_mu, cov_mu, ini_hp, kern_i)
 #                    ini_hp$theta_i, kernel)
 # t2 = Sys.time()
 # t = t2 - t1
-
 
 ################ PREDICTION FUNCTIONS ################
 posterior_mu = function(db, timestamps, m_0, kern_0, kern_i, hp)
@@ -102,7 +105,7 @@ posterior_mu = function(db, timestamps, m_0, kern_0, kern_i, hp)
   list('mean' = tibble('Timestamp' = timestamps, 'Output' = new_mean) , 'cov' = new_cov) %>% return()
 }
 
-pred_gp = function(db, timestamps, mean_mu = NULL , cov_mu = NULL, 
+pred_gp = function(db, timestamps, mean_mu = 0, cov_mu = NULL, 
                    kern = kernel, theta = list(1,0.2), sigma = 0.2)
 { ## db: tibble of data columns required ('Timestamp', 'Input', 'Output')(Input format : paste0('X', Timestamp))
   ## timestamps : timestamps on which we want a prediction
@@ -118,23 +121,30 @@ pred_gp = function(db, timestamps, mean_mu = NULL , cov_mu = NULL,
   yn = db %>% pull(Output)
   input_t = paste0('X', timestamps)
   all_times = union(tn,timestamps)
-  mean_mu_obs = mean_mu %>%  filter(Timestamp %in% tn) %>% pull(Output)
-  mean_mu_pred = mean_mu %>% filter(Timestamp %in% timestamps) %>% pull(Output)
   
   if(is.null(cov_mu))
   {
     cov_mu = matrix(0, length(all_times), length(all_times),
                     dimnames = list(paste0('X', all_times), paste0('X', all_times)))
   }
-  if(is.null(mean_mu)){mean_mu = matrix(0, length(all_times), 1, dimnames = list(paste0('X', all_times)))}
-  if(length(mean_mu) == 1){mean_mu = matrix(mean_mu, length(all_times), 1, dimnames = list(paste0('X', all_times)))}
+  if(length(mean_mu) == 1)
+  {
+    mean_mu_obs = rep(mean_mu, length(tn))
+    mean_mu_pred = rep(mean_mu, length(timestamps))
+  }
+  else
+  {
+    mean_mu_obs = mean_mu %>%  filter(Timestamp %in% tn) %>% pull(Output)
+    mean_mu_pred = mean_mu %>% filter(Timestamp %in% timestamps) %>% pull(Output)
+  }
   
   inv_mat = (kern_to_cov(tn, kern, theta, sigma) + cov_mu[input, input]) %>% solve()
   cov_tn_t = kern(mat_dist(tn, timestamps), theta) + cov_mu[input,input_t]
+
   cov_t_t = kern_to_cov(timestamps, kern, theta, sigma) + cov_mu[input_t ,input_t]
 
   tibble('Timestamp' = timestamps,
-         'Mean' = mean_mu_pred + t(cov_tn_t) %*% inv_mat %*% (yn - mean_mu_obs) %>% as.vector(),
+         'Mean' = (mean_mu_pred + t(cov_tn_t) %*% inv_mat %*% (yn - mean_mu_obs)) %>% as.vector(),
          'Var' = (cov_t_t - t(cov_tn_t) %*% inv_mat %*% cov_tn_t) %>% diag()) %>% return()
 }
 
@@ -146,16 +156,21 @@ plot_gp = function(pred_gp, data = NULL)
   ## return : plot of the predicted curve of the GP with the 0.95 confidence interval (optional : data points)
   gg = ggplot() +
          geom_line(data = pred_gp, aes(x = Timestamp, y = Mean), color = 'blue') +
-         geom_ribbon(data = pred_gp, aes(x = Timestamp, ymin = Mean - 1.96* sqrt(Var), 
-                                         ymax = Mean +  1.96* sqrt(Var)), alpha = 0.2)
+         geom_ribbon(data = pred_gp, aes(x = Timestamp, ymin = Mean - 1.96 * sqrt(Var), 
+                                         ymax = Mean +  1.96 * sqrt(Var)), alpha = 0.2)
   
   if(!is.null(data)){gg = gg + geom_point(data = data, aes(x = Timestamp, y = Output, col = ID), shape = 4)}
   return(gg)
 }
 
+plot_db = function(db = db_train)
+{
+  ggplot(db) + geom_smooth(aes(Timestamp, Output, color = ID)) + geom_point(aes(Timestamp, Output, color = ID))
+}
+
 ################ APPLICATION #########################
 
-full_algo = function(db, new_db, timestamps, kern_i, plot = T, prior_mean,
+full_algo = function(db, new_db, timestamps, kern_i, common_hp = T, plot = T, prior_mean,
                      kern_0 = NULL, list_hp = NULL, mu = NULL, ini_hp = NULL, hp_new_i = NULL)
 { ## db : Database containing all training data from all individuals. Column: ID - Timestamp - Output.
   ## new_db : Database containing data for a new individual we want a prediction on.
@@ -170,21 +185,19 @@ full_algo = function(db, new_db, timestamps, kern_i, plot = T, prior_mean,
   ## hp_new_i : Hyper-pameters for the new individual to predict. Optional, computed if NULL. 
   ####
   ## return : predicted GP parameters | posterior mean process | all trained hyperparameters
-  
-  if(is.null(list_hp)){list_hp = training(db, prior_mean, ini_hp, kern_0, kern_i)[c('theta_0', 'theta_i')]}
-  
+  if(is.null(list_hp)){list_hp = training(db, prior_mean, ini_hp, kern_0, kern_i, common_hp)[c('theta_0', 'theta_i')]}
+
   t_pred = timestamps %>% union(unique(db$Timestamp)) %>% union(unique(new_db$Timestamp)) %>% sort()
   if(is.null(mu)){mu = posterior_mu(db, t_pred, prior_mean, kern_0, kern_i, list_hp)}
-  mean_mu = mu$Mean
-  t_mu = mu$Timestamp
-  obs_input = new_db$Input
+
+  if(is.null(hp_new_i) & common_hp){hp_new_i = list('theta' = list_hp$theta_i[[1]][1:2], 
+                                                    'sigma' = list_hp$theta_i[[1]][[3]])}
+  else if(is.null(hp_new_i)){hp_new_i = train_new_gp(new_db, mu$mean, mu$cov, ini_hp$theta_i, kern_i)}
   
-  if(is.null(hp_new_i)){hp_new_i = train_new_gp(new_db, mean_mu = mean_mu[obs_input,], 
-                                                cov_mu = mu$Cov[obs_input,obs_input], ini_hp$theta_i, kern_i)}
-  
-  pred = pred_gp(new_db, timestamps, mean_mu = mean_mu, cov_mu = mu$Cov, kern_i, hp_new_i$theta, hp_new_i$sigma)
-  
-  if(plot){(pred %>% plot_gp(data = rbind(new_db, db)) + geom_point(aes(t_mu, mean_mu))) %>% print()}
+  pred = pred_gp(new_db, timestamps, mean_mu = mu$mean, cov_mu = mu$cov, kern_i, hp_new_i$theta, hp_new_i$sigma)
+
+  if(plot){(pred %>% plot_gp(data = rbind(new_db, db)) +
+                     geom_point(aes(mu$mean$Timestamp, mu$mean$Output))) %>% print()}
 
   list('Prediction' = pred, 'Mean_process' = mu, 'Hyperparameters' = list('other_i' = list_hp, 'new_i' = hp_new_i)) %>% 
   return()
@@ -192,7 +205,7 @@ full_algo = function(db, new_db, timestamps, kern_i, plot = T, prior_mean,
 
 
 ############### SIMULATED DATA ######################
-simu_indiv = function(ID, t, kern = kernel_mu, theta, mean, var)
+simu_indiv_test = function(ID, t, kern = kernel_mu, theta, mean, var)
 { ## Return Age and Performance of a simulated individual
   ## nb : Number of timestamps
   ## Id : identifier of the individual
@@ -214,38 +227,36 @@ simu_indiv = function(ID, t, kern = kernel_mu, theta, mean, var)
 }
 
 #set.seed(42)
-M = 10
-N = 10
+M = 20
+N = 20
 t = matrix(0, ncol = N, nrow = M)
-for(i in 1:M){t[i,] = sample(seq(10, 20, 0.5),N, replace = F) %>% sort()}
+for(i in 1:M){t[i,] = sample(seq(10, 20, 0.02),N, replace = F) %>% sort()}
 
-db_train = simu_indiv(ID = '1', t[1,], kernel_mu, theta = c(2,1), mean = 45, var = 0.2)
+db_train = simu_indiv_test(ID = '1', t[1,], kernel_mu, theta = c(2,1), mean = 45, var = 0.2)
 for(i in 2:M)
 {
   k = i %% 5
-  if(k == 0){db_train = rbind(db_train, simu_indiv(ID = as.character(i), t[i,], kernel_mu, theta = c(2,2), mean = 45, var = 0.6))}
-  if(k == 1){db_train = rbind(db_train, simu_indiv(ID = as.character(i), t[i,], kernel_mu, theta = c(2,1), mean = 45, var = 0.2))}
-  if(k == 2){db_train = rbind(db_train, simu_indiv(ID = as.character(i), t[i,], kernel_mu, theta = c(3,2), mean = 45, var = 0.3))}
-  if(k == 3){db_train = rbind(db_train, simu_indiv(ID = as.character(i), t[i,], kernel_mu, theta = c(1,2), mean = 45, var = 0.4))}
-  if(k == 4){db_train = rbind(db_train, simu_indiv(ID = as.character(i), t[i,], kernel_mu, theta = c(1,1), mean = 45, var = 0.5))}
+  if(k == 0){db_train = rbind(db_train, simu_indiv_test(ID = as.character(i), t[i,], kernel_mu, theta = c(2,2), mean = 45, var = 0.6))}
+  if(k == 1){db_train = rbind(db_train, simu_indiv_test(ID = as.character(i), t[i,], kernel_mu, theta = c(2,1), mean = 45, var = 0.2))}
+  if(k == 2){db_train = rbind(db_train, simu_indiv_test(ID = as.character(i), t[i,], kernel_mu, theta = c(3,2), mean = 45, var = 0.3))}
+  if(k == 3){db_train = rbind(db_train, simu_indiv_test(ID = as.character(i), t[i,], kernel_mu, theta = c(1,2), mean = 45, var = 0.4))}
+  if(k == 4){db_train = rbind(db_train, simu_indiv_test(ID = as.character(i), t[i,], kernel_mu, theta = c(1,1), mean = 45, var = 0.5))}
 }
-db_obs = simu_indiv(ID = (M+1) %>% as.character(), sample(seq(10, 20, 0.5), N, replace = F) %>% sort(),
+db_obs = simu_indiv_test(ID = (M+1) %>% as.character(), sample(seq(10, 20, 0.02), N, replace = F) %>% sort(),
                     kernel_mu, theta = c(2,1), mean = 45, var = 0.2)
 
 # ################ INITIALISATION ######################
 ini_hp = list('theta_0' = c(1,1), 'theta_i' = c(1, 1, 0.2))
-m_0 = 50
-
+m_0 = 0
 
 ##### Testing codes ############
 
 ## Testing the full_algo function
 # bla = training(db_train, 0, ini_hp, kernel_mu, kernel)
 # list_hp_test = bla[c('theta_0','theta_i')]
-# list_hp_test$theta_0 = c(7,1) ## Because hp of K_0 are crucial and often mistrained
-# blab = full_algo(db_train, db_obs[3:7,], seq(10, 20, 0.05), kernel, plot = T, prior_mean = 0, kern_0 = kernel_mu,
-#           list_hp = list_hp_test, mu = NULL, ini_hp = ini_hp, hp_new_i = hp_one_gp)
-# 
+# blab = full_algo(db_train, db_obs[1:5,], seq(9, 20, 0.02), kernel, common_hp = F, plot = T, prior_mean = m_0,
+#                  kern_0 = kernel_mu, list_hp = list_hp_test, mu = NULL, ini_hp = ini_hp, hp_new_i = NULL)
+
 # plot_gp(blab$Prediction, db_obs[3:7,])
 
 # hp_one_gp = list('theta' = c(5,2), 'sigma' = 0.2)
@@ -254,20 +265,20 @@ m_0 = 50
 # plot_gp(fu, db_obs[3:7,])
 
 # Testing the training function
-common_hp = F
-bla = training(db_train, 5, ini_hp, kernel_mu, kernel, common_hp)
-fu = bla$param$mean$Output
-names(fu) = paste0('X', bla$param$mean$Timestamp)
-timestamps = seq(10,20, 0.01)
-post_mu = posterior_mu(db_train, timestamps, m_0 = 40, 
-                       kernel_mu, kernel, list('theta_0' = bla$theta_0, 'theta_i' = bla$theta_i))
-
-hp_pred = list('theta' = bla$theta_i[['1']][1:2], 'sigma' =  bla$theta_i[['1']][[3]])
-if(!common_hp) hp_pred = train_new_gp(db_obs, post_mu$mean, post_mu$cov, ini_hp$theta_i, kernel)
-
-pred_gp(db_obs[1:3,], timestamps = timestamps, mean_mu = post_mu$mean,
-        cov_mu = post_mu$cov, theta = hp_pred$theta, sigma = hp_pred$sigma) %>%
-  plot_gp(data = rbind(db_obs[1:10,], db_train)) + geom_point(aes(bla$param$mean$Timestamp, bla$param$mean$Output))
+# common_hp = F
+# bla = training(db_train, 5, ini_hp, kernel_mu, kernel, common_hp)
+# fu = bla$param$mean$Output
+# names(fu) = paste0('X', bla$param$mean$Timestamp)
+# timestamps = seq(10,20, 0.01)
+# post_mu = posterior_mu(db_train, timestamps, m_0 = 40, 
+#                        kernel_mu, kernel, list('theta_0' = bla$theta_0, 'theta_i' = bla$theta_i))
+# 
+# hp_pred = list('theta' = bla$theta_i[['1']][1:2], 'sigma' =  bla$theta_i[['1']][[3]])
+# if(!common_hp) hp_pred = train_new_gp(db_obs, post_mu$mean, post_mu$cov, ini_hp$theta_i, kernel)
+# 
+# pred_gp(db_obs[1:3,], timestamps = timestamps, mean_mu = post_mu$mean,
+#         cov_mu = post_mu$cov, theta = hp_pred$theta, sigma = hp_pred$sigma) %>%
+#   plot_gp(data = rbind(db_obs[1:10,], db_train)) + geom_point(aes(post_mu$mean$Timestamp, post_mu$mean$Output))
 
 # ### Testing update_mean and update_inv
 # grid = seq(0,101,0.619)

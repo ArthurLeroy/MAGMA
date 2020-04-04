@@ -1,6 +1,43 @@
 setwd(dir = 'C:/Users/user/CloudStation/Maths/These/Processus Gaussiens/Code R/Algo multitask GP')
 source('Algo_multitask_GP.R')
 
+library(gpfda)
+
+##### COMPETING ALGO IN SIMU ##
+train_gpfda = function(db)
+{
+  db = db %>% dplyr::select(ID, Timestamp, Input, Output)
+  M = unique(db$ID) %>% length
+  t_obs = db %>% filter(ID == 1) %>% pull(Timestamp)
+  N = t_obs %>% length
+  
+  lx = rep(1, M) %>% as.matrix
+  
+  fy1 = db %>% spread(key = ID, value = Output) %>% dplyr::select(- c(Timestamp, Input) ) %>% as.matrix %>% t()
+  fx1 = db$Timestamp %>% matrix(nrow = N, ncol = M) %>% t()
+  
+  gpfr(response=(fy1), lReg=lx, fReg=NULL, gpReg=list(fx1), fyList=list(nbasis=50,lambda=0.1), fbetaList_l=NULL,
+           hyper=NULL, Cov=c('pow.ex', 'linear'), fitting=T, time = t_obs, rPreIdx=T, concurrent=T) %>% 
+  return()
+}
+
+pred_gpfda = function(model, new_db, timestamps)
+{
+  a1 = model
+  tfx = timestamps %>% as.matrix
+  time_new = timestamps
+  
+  pfy = new_db$Output
+  pfx = new_db$Timestamp %>% as.matrix
+  ptime = new_db$Timestamp
+  
+  b1<-gpfrpred(a1, TestData= tfx, NewTime=time_new, lReg = 1, fReg=NULL,
+               gpReg=list('response'=(pfy),'input'=(pfx),'time'= ptime))
+  
+  tibble('Timestamp' = b1$predtime, 'Mean' = as.vector(b1$ypred.mean), 'Var' = as.vector(b1$ypred.sd)^2 ) %>%
+    return()
+}
+
 ##### SIMULATION FUNCTIONS #####
 simu_indiv = function(ID, t, mean, kern, a, b, sigma)
 { # ID : identification of the individual
@@ -61,10 +98,6 @@ simu_scheme = function(M = 10, N = 10, G = seq(0, 10, 0.05), kern_0 = kernel_mu,
   return(db)
 }
 
-plot_db = function(db = db_train)
-{
-  ggplot(db) + geom_smooth(aes(Timestamp, Output, color = ID)) + geom_point(aes(Timestamp, Output, color = ID))
-}
 
 split_train = function(db, ratio_train)
 { ## db : the database of all observed data
@@ -137,7 +170,7 @@ eval_methods = function(db_results, db_test)
 
 simu_study = function(M, N, G, prior_mean, kern_0, kern_i, ini_hp, ratio_train, int_mu_a, int_mu_b, int_i_a,
                       int_i_b, int_i_sigma, int_test)
-{
+{ 
   db_full = simu_scheme(M, N, G, kern_0, kern_i, int_mu_a, int_mu_b, int_i_a, int_i_b, int_i_sigma)
         
   mean_process = db_full %>% filter(ID == 0)
@@ -146,21 +179,23 @@ simu_study = function(M, N, G, prior_mean, kern_0, kern_i, ini_hp, ratio_train, 
   db_train = db %>% filter(Training == 1)
   db_test = db %>% filter(Training == 0) %>% split_times(int_test)
   
-  list_hp = training(db_train, prior_mean, ini_hp, kern_0, kern_i)
+  list_hp = training(db_train, prior_mean, ini_hp, kern_0, kern_i, common_hp = T)[c('theta_0','theta_i')]
+  model_gpfda = train_gpfda(db_train)
   
   floop = function(i)
-  {
+  { browser()
     db_obs_i = db_test %>% filter(ID == i) %>% filter(Observed == 1)
     db_pred_i = db_test %>% filter(ID == i) %>% filter(Observed == 0) 
     t_i_pred = db_pred_i %>% pull(Timestamp)
-    res_algo = full_algo(db_train, db_obs_i, t_i_pred, kern_i, plot = F, prior_mean, kern_0,
+
+    res_algo = full_algo(db_train, db_obs_i, t_i_pred, kern_i, common_hp = T, plot = F, prior_mean, kern_0,
                          list_hp, mu = NULL, ini_hp, hp_new_i = NULL)$Prediction
+
+    hp_one_gp_hp = train_new_gp(db_obs_i, rep(prior_mean, nrow(db_obs_i)), cov_mu = 0, ini_hp$theta_i, kern_i)
+
+    res_one_gp = pred_gp(db_obs_i, t_i_pred, prior_mean, cov_mu = NULL, kern_i, hp_one_gp_hp$theta, hp_one_gp_hp$sigma)
     
-    hp_one_gp_i = train_new_gp(db_obs_i, rep(prior_mean, nrow(db_obs_i)), cov_mu = 0, ini_hp$theta_i, kern_i)
-    res_one_gp = pred_gp(db_obs_i, t_i_pred, prior_mean, cov_mu = NULL, kern_i, hp_one_gp_i$theta, hp_one_gp_i$sigma)
-    
-    res_gpfda = full_algo(db_train, db_obs_i, t_i_pred, kern_i, plot = F, prior_mean, kern_0,
-                          list_hp, mu = NULL, ini_hp, hp_new_i = NULL)$Prediction
+    res_gpfda = pred_gpfda(model_gpfda, db_obs_i, t_i_pred)
       
     list('algo' = res_algo, 'one_gp' = res_one_gp, 'gpfda' = res_gpfda) %>% 
     eval_methods(db_pred_i %>% pull(Output)) %>% return() 
@@ -171,11 +206,13 @@ simu_study = function(M, N, G, prior_mean, kern_0, kern_i, ini_hp, ratio_train, 
   return(table_eval)
 }
 
+
 ##### SIMULATION STUDY ##### 
 db_train = simu_scheme(M = 10, N = 10, G = seq(0, 10, 0.05))
 plot_db(db_train)
 
-eval = simu_study(M = 10, N = 10, G = seq(0, 10, 0.1), prior_mean = 0, kern_0 = kernel_mu, kern_i = kernel,
+set.seed(51)
+eval = simu_study(M = 10, N = 10, G = seq(0.1, 1, 0.1), prior_mean = 0, kern_0 = kernel_mu, kern_i = kernel,
                   ini_hp,
                   ratio_train = 0.6,
                   int_mu_a = c(0,5),
@@ -185,6 +222,38 @@ eval = simu_study(M = 10, N = 10, G = seq(0, 10, 0.1), prior_mean = 0, kern_0 = 
                   int_i_sigma = c(0,1), 
                   int_test = c(2,9))
 
+
+
+###### TEST GPFDA
+# M = 20
+# N = 11
+# t = matrix(0, ncol = N, nrow = M)
+# for(i in 1:M){t[i,] = seq(0,10, length.out = N)}
+# 
+# db_train = simu_indiv(ID = '1', t[1,], kernel_mu, theta = c(2,1), mean = 45, var = 0.2)
+# for(i in 2:M)
+# {
+#   k = i %% 5
+#   if(k == 0){db_train = rbind(db_train, simu_indiv(ID = as.character(i), t[i,], kernel_mu, theta = c(2,2), mean = 45, var = 0.6))}
+#   if(k == 1){db_train = rbind(db_train, simu_indiv(ID = as.character(i), t[i,], kernel_mu, theta = c(2,1), mean = 45, var = 0.2))}
+#   if(k == 2){db_train = rbind(db_train, simu_indiv(ID = as.character(i), t[i,], kernel_mu, theta = c(3,2), mean = 45, var = 0.3))}
+#   if(k == 3){db_train = rbind(db_train, simu_indiv(ID = as.character(i), t[i,], kernel_mu, theta = c(1,2), mean = 45, var = 0.4))}
+#   if(k == 4){db_train = rbind(db_train, simu_indiv(ID = as.character(i), t[i,], kernel_mu, theta = c(1,1), mean = 45, var = 0.5))}
+# }
+# db_obs = simu_indiv(ID = (M+1) %>% as.character(), seq(0,10, length.out = N),
+#                     kernel_mu, theta = c(2,1), mean = 40, var = 0.2)
+# 
+# 
+# plot(b1,type='prediction')
+# 
+# plot(-1000,col=0,xlim=range(b1$time),ylim=range(b1$ypred),xlab='time',ylab='prediction',
+#      main='Prediction by GPFR: type I')
+# 
+# lines(b1$predtime,b1$ypred[,1])
+# lines(b1$predtime,b1$ypred[,2],lty=2,col=2)
+# lines(b1$predtime,b1$ypred[,3],lty=2,col=2)
+# points(xt,yt)
+# 
 
 ##### INITIALISATION #####
 
