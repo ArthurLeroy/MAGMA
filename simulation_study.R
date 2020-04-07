@@ -7,8 +7,8 @@ library(gpfda)
 train_gpfda = function(db)
 {
   db = db %>% dplyr::select(ID, Timestamp, Input, Output)
-  M = unique(db$ID) %>% length
-  t_obs = db %>% filter(ID == 1) %>% pull(Timestamp)
+  M = db$ID %>% unique %>% length
+  t_obs = db$Timestamp %>% unique
   N = t_obs %>% length
   
   lx = rep(1, M) %>% as.matrix
@@ -16,7 +16,7 @@ train_gpfda = function(db)
   fy1 = db %>% spread(key = ID, value = Output) %>% dplyr::select(- c(Timestamp, Input) ) %>% as.matrix %>% t()
   fx1 = db$Timestamp %>% matrix(nrow = N, ncol = M) %>% t()
   
-  gpfr(response=(fy1), lReg=lx, fReg=NULL, gpReg=list(fx1), fyList=list(nbasis=50,lambda=0.1), fbetaList_l=NULL,
+  gpfr(response=(fy1), lReg=lx, fReg=NULL, gpReg=list(fx1), fyList=list(nbasis=23,lambda=0.1), fbetaList_l=NULL,
            hyper=NULL, Cov=c('pow.ex', 'linear'), fitting=T, time = t_obs, rPreIdx=T, concurrent=T) %>% 
   return()
 }
@@ -70,7 +70,7 @@ prior_mean = function(t)
   return(a * t + b)
 }
 
-simu_scheme = function(M = 10, N = 10, G = seq(0, 10, 0.05), kern_0 = kernel_mu, kern_i = kernel,
+simu_scheme = function(M = 10, N = 10, G = seq(0, 10, 0.05), common_times = T, kern_0 = kernel_mu, kern_i = kernel,
                        int_mu_a = c(0,5),
                        int_mu_b = c(0,2),
                        int_i_a = c(0,5),
@@ -82,10 +82,11 @@ simu_scheme = function(M = 10, N = 10, G = seq(0, 10, 0.05), kern_0 = kernel_mu,
   mu_b = draw(int_mu_b)
   
   db_0 = simu_indiv('0', G, m_0, kern_0, mu_a, mu_b, sigma = 0)
+  if(common_times){t_i = sample(G, N, replace = F) %>% sort()}
   
   floop = function(i)
   { 
-    t_i = sample(G, N, replace = F) %>% sort()
+    if(!common_times){t_i = sample(G, N, replace = F) %>% sort()}
     i_a = draw(int_i_a)
     i_b = draw(int_i_b)
     i_sigma = draw(int_i_sigma)
@@ -97,7 +98,6 @@ simu_scheme = function(M = 10, N = 10, G = seq(0, 10, 0.05), kern_0 = kernel_mu,
   db = do.call("rbind", db_i) %>% rbind(db_0)
   return(db)
 }
-
 
 split_train = function(db, ratio_train)
 { ## db : the database of all observed data
@@ -168,40 +168,43 @@ eval_methods = function(db_results, db_test)
 
 ##### FULL SIMULATION FUNCTION #####
 
-simu_study = function(M, N, G, prior_mean, kern_0, kern_i, ini_hp, ratio_train, int_mu_a, int_mu_b, int_i_a,
-                      int_i_b, int_i_sigma, int_test)
+simu_study = function(M, N, G, prior_mean, kern_0, kern_i, ini_hp, common_hp, common_times, ratio_train, 
+                      int_mu_a, int_mu_b, int_i_a, int_i_b, int_i_sigma, int_test)
 { 
-  db_full = simu_scheme(M, N, G, kern_0, kern_i, int_mu_a, int_mu_b, int_i_a, int_i_b, int_i_sigma)
+  db_full = simu_scheme(M, N, G, common_times, kern_0, kern_i, int_mu_a, int_mu_b, int_i_a, int_i_b, int_i_sigma)
         
   mean_process = db_full %>% filter(ID == 0)
   db = db_full %>% filter(ID != 0) %>% split_train(ratio_train)
   
   db_train = db %>% filter(Training == 1)
   db_test = db %>% filter(Training == 0) %>% split_times(int_test)
-  
-  list_hp = training(db_train, prior_mean, ini_hp, kern_0, kern_i, common_hp = T)[c('theta_0','theta_i')]
-  model_gpfda = train_gpfda(db_train)
+
+  if(common_times){model_gpfda = train_gpfda(db_train)}
+  list_hp = training(db_train, prior_mean, ini_hp, kern_0, kern_i, common_hp)[c('theta_0','theta_i')]
   
   floop = function(i)
-  { browser()
+  {
     db_obs_i = db_test %>% filter(ID == i) %>% filter(Observed == 1)
     db_pred_i = db_test %>% filter(ID == i) %>% filter(Observed == 0) 
     t_i_pred = db_pred_i %>% pull(Timestamp)
-
-    res_algo = full_algo(db_train, db_obs_i, t_i_pred, kern_i, common_hp = T, plot = F, prior_mean, kern_0,
+    
+    res_algo = full_algo(db_train, db_obs_i, t_i_pred, kern_i, common_hp, plot = F, prior_mean, kern_0,
                          list_hp, mu = NULL, ini_hp, hp_new_i = NULL)$Prediction
 
     hp_one_gp_hp = train_new_gp(db_obs_i, rep(prior_mean, nrow(db_obs_i)), cov_mu = 0, ini_hp$theta_i, kern_i)
-
-    res_one_gp = pred_gp(db_obs_i, t_i_pred, prior_mean, cov_mu = NULL, kern_i, hp_one_gp_hp$theta, hp_one_gp_hp$sigma)
     
-    res_gpfda = pred_gpfda(model_gpfda, db_obs_i, t_i_pred)
+    res_one_gp = pred_gp(db_obs_i, t_i_pred, prior_mean, cov_mu = NULL, kern_i, hp_one_gp_hp$theta, hp_one_gp_hp$sigma)
+
+    if(common_times){res_gpfda = pred_gpfda(model_gpfda, db_obs_i, t_i_pred)} 
+    else{res_gpfda =  tibble('Timestamp' = t_i_pred, 'Mean' = NA ,   'Var' = NA)}
       
     list('algo' = res_algo, 'one_gp' = res_one_gp, 'gpfda' = res_gpfda) %>% 
     eval_methods(db_pred_i %>% pull(Output)) %>% return() 
   }
   list_eval = db_test$ID %>% unique() %>% lapply(floop)
-  table_eval = do.call('rbind', list_eval) %>% group_by(Method) %>% summarise_all(list('Mean' = mean, 'SD' = sd))
+  print(list_eval)
+  table_eval = do.call('rbind', list_eval) %>% group_by(Method) %>% 
+               summarise_all(list('Mean' = mean, 'SD' = sd), na.rm = TRUE)
   
   return(table_eval)
 }
@@ -211,9 +214,8 @@ simu_study = function(M, N, G, prior_mean, kern_0, kern_i, ini_hp, ratio_train, 
 db_train = simu_scheme(M = 10, N = 10, G = seq(0, 10, 0.05))
 plot_db(db_train)
 
-set.seed(51)
-eval = simu_study(M = 10, N = 10, G = seq(0.1, 1, 0.1), prior_mean = 0, kern_0 = kernel_mu, kern_i = kernel,
-                  ini_hp,
+eval = simu_study(M = 10, N = 10, G = seq(0, 10, 0.05), prior_mean = 0, kern_0 = kernel_mu, kern_i = kernel,
+                  ini_hp, common_hp = T, common_times = T,
                   ratio_train = 0.6,
                   int_mu_a = c(0,5),
                   int_mu_b = c(0,2),
@@ -221,7 +223,6 @@ eval = simu_study(M = 10, N = 10, G = seq(0.1, 1, 0.1), prior_mean = 0, kern_0 =
                   int_i_b = c(0,2),
                   int_i_sigma = c(0,1), 
                   int_test = c(2,9))
-
 
 
 ###### TEST GPFDA

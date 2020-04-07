@@ -38,7 +38,7 @@ training = function(db, prior_mean, ini_hp, kern_0, kern_i, common_hp = T)
                           # + 0.5 * log(det(param$cov))
     c('logLL = ', new_logLL_monitoring) %>% print()
     diff_moni = new_logLL_monitoring - logLL_monitoring
-    if(diff_moni < - 0.1){stop('Likelihood descreased')}
+    if(diff_moni < - 0.1){warning('Likelihood descreased')}
 
     logL_new_hp = logL_monitoring(new_hp, db, kern_i, kern_0, param$mean, param$cov, prior_mean)
                   #+ 0.5 * log(det(param$cov))
@@ -116,6 +116,7 @@ pred_gp = function(db, timestamps, mean_mu = 0, cov_mu = NULL,
   ## sigma : variance of the error term of the models
   ####
   ## return : pamameters of the gaussian density predicted at timestamps 
+
   tn = db %>% pull(Timestamp)
   input = db %>% pull(Input)
   yn = db %>% pull(Output)

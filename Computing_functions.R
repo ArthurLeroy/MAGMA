@@ -63,12 +63,12 @@ kern_to_cov = function(x, kern = kernel, theta = c(1, 0.5), sigma = 0.2)
   ## theta : list of the required hyperparameters
   ####
   ## return : list of inverse covariance matrices (1 by individual) of the input vectors according to kernel() function
-  
+
   if(is.vector(x))
   { 
     if(length(x) == 1)
     {
-      mat = sigma^2 + exp(theta[[1]])
+      mat = as.matrix(sigma^2 + exp(theta[[1]]))
     } 
     else 
     {
@@ -76,9 +76,6 @@ kern_to_cov = function(x, kern = kernel, theta = c(1, 0.5), sigma = 0.2)
       M = dist(x)^2
       mat = as.matrix(kern(M, theta)) + diag(sigma^2 + exp(theta[[1]]) ,length(x))
     }
-    
-    
-    if(mat %>% dim() %>% is.null()){mat = as.matrix(mat)}
     rownames(mat) = paste0('X', x)
     colnames(mat) = paste0('X', x)
     return(mat)
@@ -99,15 +96,13 @@ kern_to_cov = function(x, kern = kernel, theta = c(1, 0.5), sigma = 0.2)
       indiv = x %>% filter(ID == i) %>% arrange(Timestamp) %>% pull(Timestamp) %>% sort()
       if(length(indiv) == 1)
       {
-        mat = theta[[i]][3]^2 + exp(theta[[i]][1])
+        mat = as.matrix(theta[[i]][3]^2 + exp(theta[[i]][1]))
       } 
       else 
       {
         M = dist(indiv)^2
         mat = as.matrix(kern(M, theta[[i]][1:2])) + diag(theta[[i]][3]^2 + exp(theta[[i]][1]), length(indiv))
       }
-
-      if(mat %>% dim() %>% is.null()){mat = as.matrix(mat)}
       rownames(mat) = paste0('X', indiv)
       colnames(mat) = paste0('X', indiv)
       return(mat)
@@ -129,7 +124,7 @@ kern_to_inv = function(x, kern = kernel, theta = c(1, 0.5), sigma = 0.2)
   { 
     if(length(x) == 1)
     {
-      mat = sigma^2 + exp(theta[[1]])
+      mat = as.matrix(sigma^2 + exp(theta[[1]]))
     } 
     else 
     {
@@ -139,8 +134,6 @@ kern_to_inv = function(x, kern = kernel, theta = c(1, 0.5), sigma = 0.2)
     }
     #inv = tryCatch(solve(mat), error = function(e){MASS::ginv(mat)})
     inv = solve(mat)
-    
-    if(inv %>% dim() %>% is.null()){inv = as.matrix(inv)}
     rownames(inv) = paste0('X', x)
     colnames(inv) = paste0('X', x)
     return(inv)
@@ -161,7 +154,7 @@ kern_to_inv = function(x, kern = kernel, theta = c(1, 0.5), sigma = 0.2)
       indiv = x %>% filter(ID == i) %>% arrange(Timestamp) %>% pull(Timestamp) %>% sort()
       if(length(indiv) == 1)
       {
-        mat = theta[[i]][3]^2 + exp(theta[[i]][1])
+        mat = as.matrix(theta[[i]][3]^2 + exp(theta[[i]][1]))
       } 
       else 
       {
@@ -170,8 +163,6 @@ kern_to_inv = function(x, kern = kernel, theta = c(1, 0.5), sigma = 0.2)
       }
       #inv = tryCatch(solve(mat), error = function(e){MASS::ginv(mat)})
       inv = solve(mat)
-      
-      if(inv %>% dim() %>% is.null()){inv = as.matrix(inv)}
       rownames(inv) = paste0('X', indiv)
       colnames(inv) = paste0('X', indiv)
       return(inv)
@@ -183,7 +174,6 @@ kern_to_inv = function(x, kern = kernel, theta = c(1, 0.5), sigma = 0.2)
     return(list_mat)
   } 
 }
-
 
 ##### LOGLIKELIHOOD FUNCTIONS ####
 logL_GP_mod = function(hp, db, mean, kern, new_cov)
