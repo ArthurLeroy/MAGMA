@@ -1,7 +1,10 @@
 setwd(dir = 'C:/Users/user/CloudStation/Maths/These/Processus Gaussiens/Code R/Algo multitask GP')
 source('Algo_multitask_GP.R')
 
-library(gpfda)
+library(GPFDA)
+library(matlabr)
+options(matlab.path = "/Applications/MATLAB_R2014b.app/bin")
+have_matlab()
 
 ##### COMPETING ALGO IN SIMU ##
 train_gpfda = function(db)
@@ -36,6 +39,22 @@ pred_gpfda = function(model, new_db, timestamps)
   
   tibble('Timestamp' = b1$predtime, 'Mean' = as.vector(b1$ypred.mean), 'Var' = as.vector(b1$ypred.sd)^2 ) %>%
     return()
+}
+
+train_bfda = function(db)
+{
+  db = db %>% dplyr::select(ID, Timestamp, Input, Output)
+  M = db$ID %>% unique %>% length
+  t_obs = db$Timestamp %>% unique
+  N = t_obs %>% length
+  
+  matlab_db = db %>% spread(key = ID, value = Output) %>%
+                  dplyr::select(- c(Timestamp, Input) ) %>%
+                  as.matrix %>% 
+                  rmat_to_matlab_mat()
+  matlab_time = db %>% dplyr::select(ID, Timestamp) %>% rmat_to_matlab_mat()
+  
+  run_matlab_script(transform_data.m) %>% return()
 }
 
 ##### SIMULATION FUNCTIONS #####
