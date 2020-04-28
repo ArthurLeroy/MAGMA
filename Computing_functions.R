@@ -108,7 +108,6 @@ kern_to_cov = function(x, kern = kernel, theta = c(1, 0.5), sigma = 0.2)
       return(mat)
     }
     list_mat = sapply(unique(x$ID), floop, simplify = FALSE, USE.NAMES = TRUE)
-    if(length(list_mat) == 1){return(list_mat[[1]])}
     
     return(list_mat)
   } 
@@ -168,9 +167,7 @@ kern_to_inv = function(x, kern = kernel, theta = c(1, 0.5), sigma = 0.2)
       return(inv)
     }
     list_mat = sapply(unique(x$ID), floop, simplify = FALSE, USE.NAMES = TRUE)
-    
-    if(length(list_mat) == 1){return(list_mat[[1]])}
-    
+  
     return(list_mat)
   } 
 }
@@ -329,7 +326,7 @@ gr_GP_mod_common_hp = function(hp, db, mean, kern, new_cov)
 
 ##### EM FUNCTIONS #########
 e_step = function(db, m_0, kern_0, kern_i, hp)
-{ ## db : full database with all individuals. Columns required : ID, Timestamp, Input, Output
+{ ## db : full database with all individuals. Columns required : ID, Timestamp, Output
   ## kern_i : kernel used to compute the covariance matrix of individuals GP at corresponding timestamps (Psi_i)
   ## kern_0 : kernel used to compute the covariance matrix of the mean GP at corresponding timestamps (K_0) 
   ## hp : set of hyper-parameters optimised during the M step
@@ -347,11 +344,12 @@ e_step = function(db, m_0, kern_0, kern_i, hp)
   weighted_mean = update_mean(prior_mean = m_0, prior_inv = inv_0, list_inv_i = inv_i, list_value_i = value_i)
   new_mean = new_cov %*% weighted_mean %>% as.vector()
   
-  list('mean' = tibble('Timestamp' = all_t, 'Output' = new_mean), 'cov' = new_cov) %>% return()
+  list('mean' = tibble('Timestamp' = all_t, 'Output' = new_mean), 'cov' = new_cov,
+       'pred_GP' = tibble('Timestamp' = all_t, 'Mean' = new_mean, 'Var' = diag(new_cov)) ) %>% return()
 }
 
 m_step = function(db, old_hp, mean, cov, kern_0, kern_i, m_0, common_hp)
-{ ## db : db : full database with all individuals. Columns required : ID, Timestamp, Input, Output
+{ ## db : db : full database with all individuals. Columns required : ID, Timestamp, Output
   ## old_hp : the set of hyper-parameters from the previous step of the EM
   ## mean : mean parameter of the mean GP (mu_0), computed during the E step
   ## cov : covariance parameter of the mean GP (mu_0), computed during the E step

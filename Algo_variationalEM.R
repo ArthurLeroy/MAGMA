@@ -68,7 +68,7 @@ train_new_gp_VEM = function(db, param_mu_k, ini_hp, kern_i, hp)
 {
   mean_mu_k = param_mu_k$mean
   cov_mu_k = param_mu_k$cov
-  pi_k = sapply(param_mu_k$tau_i_k, function(x) Reduce("mean", x)) 
+  pi_k = sapply(param_mu_k$tau_i_k, function(x) Reduce("+", x)/ length(x)) 
   
   tau_k = update_tau_i_k_VEM = function(db, m_k, mean_mu_k, cov_mu_k, kern_i, hp, pi_k)
   
@@ -93,12 +93,13 @@ train_new_gp_VEM = function(db, param_mu_k, ini_hp, kern_i, hp)
 
 ################ PREDICTION FUNCTIONS ################
 posterior_mu_k = function(db, timestamps, m_k, kern_0, kern_i, hp)
-{ ## db : matrix of data columns required ('Timestamp', 'Input', 'Output')(Input format : paste0('X', Timestamp))
+{ ## db : tibble of data columns required ('ID', 'Timestamp',  'Output')
   ## timestamps : timestamps on which we want a prediction
   ## prior_mean : prior mean value of the mean GP (scalar value or vector of same length as 'timestamps')
   ## kern_0 : kernel associated to the covariance function of the mean GP
   ####
   ## return : pamameters of the mean GP at timestamps
+  
   t_clust = tibble('ID' = rep(names(m_k), each = length(timestamps)) , 'Timestamp' = rep(timestamps, length(m_k)),
                    'Input' = rep(paste0('X', timestamps), length(m_k)))
   inv_k = kern_to_inv(t_clust, kern_0, hp$theta_k, sigma = 0)
@@ -127,7 +128,7 @@ posterior_mu_k = function(db, timestamps, m_k, kern_0, kern_i, hp)
   list('mean' = mean_k, 'cov' = cov_k) %>% return()
 }
 
-pred_gp_clust = function(db, timestamps, list_mu, kern, hp)
+pred_gp_clust = function(db, timestamps = NULL, list_mu, kern, hp)
 { ## db : tibble of data columns required ('Timestamp', 'Input', 'Output')(Input format : paste0('X', Timestamp))
   ## timestamps : timestamps on which we want a prediction
   ## mean_mu : mean value of mean GP at timestamps (obs + pred) (matrix dim: timestamps x 1, with Input rownames)
@@ -137,8 +138,11 @@ pred_gp_clust = function(db, timestamps, list_mu, kern, hp)
   ####
   ## return : pamameters of the gaussian density predicted at timestamps 
   tn = db %>% pull(Timestamp)
-  input = db %>% pull(Input)
+  #input = db %>% pull(Input)
+  input = paste0('X', db$Timestamp)
   yn = db %>% pull(Output)
+  
+  if(is.null(timestamps)){timestamps = seq(min(tn), max(tn), length.out = 500)}
   input_t = paste0('X', timestamps)
   
   theta = hp$theta
@@ -162,8 +166,26 @@ pred_gp_clust = function(db, timestamps, list_mu, kern, hp)
   tibble('Timestamp' = timestamps, 'Mean' = mean, 'Var' = cov) %>% return()
 }
 
+pred_gp_clust_animate = function(db, timestamps = NULL, list_mu, kern, hp)
+{
+  ## Inputs : same as for a classic GP prediction
+  ####
+  ## return : tibble of classic GP predictions but with an inscreasing number of data points considered as 'observed'
+  db %>% arrange(Timestamp)
+  all_pred = tibble()
+  
+  if(is.null(timestamps)){timestamps = seq(min(db$Timestamp), max(db$Timestamp), length.out = 500)}
+  
+  for(j in 1:nrow(db))
+  {
+    pred_j = pred_gp_clust(db[1:j,], timestamps, list_mu, kern, hp) %>% mutate(Nb_data = j)
+    all_pred = all_pred %>% rbind(pred_j)
+  }
+  return(all_pred)
+}
+
 ################ PLOT FUNCTIONS ######################
-plot_gp = function(pred_gp, data = NULL)
+plot_gp_clust = function(pred_gp, data = NULL, data_train = NULL, mean = NULL, mean_CI = F)
 { ## pred_gp : tibble coming out of the pred_gp() function, columns required : 'Timestamp', 'Mean', 'Var'
   ## data : tibble of observational data, columns required : 'Timestamp', 'Output'
   ####
@@ -173,8 +195,29 @@ plot_gp = function(pred_gp, data = NULL)
     geom_ribbon(data = pred_gp, aes(x = Timestamp, ymin = Mean - 1.96* sqrt(Var), 
                                     ymax = Mean +  1.96* sqrt(Var)), alpha = 0.2)
   
-  if(!is.null(data)){gg = gg + geom_point(data = data, aes(x = Timestamp, y = Output, col = ID), shape = 4)}
+  if(!is.null(data_train)){gg = gg + geom_point(data = data_train, aes(x = Timestamp, y = Output, col = ID), shape = 4)}
+  if(!is.null(data)){gg = gg + geom_point(data = data, aes(x = Timestamp, y = Output), size = 2, shape = 18)}
+  if(!is.null(mean))
+  {
+    for(i in 1:length(mean))
+    {
+      gg = gg + geom_line(data = mean[[i]], aes(x = Timestamp, y = Output), linetype = 'dashed') 
+    }
+  }
+  if(mean_CI){}## Code someday possibility to diplay mean process' CI
+    
   return(gg)
+}
+
+plot_animate = function(pred_gp, data = NULL, data_train = NULL, mean = NULL, mean_CI = F, file = "gganim.gif")
+{ ## pred_gp : tibble coming out of the pred_gp_animate() function, columns required : 'Timestamp', 'Mean', 'Var'
+  ## data : tibble of observational data, columns required : 'Timestamp', 'Output' (Optional)
+  ####
+  ## return : plot the animated curves of the GP with the 0.95 confidence interval (optional display raw data)
+
+  gg = plot_gp_clust(pred_gp, data, data_train, mean, mean_CI) +
+    transition_states(Nb_data, transition_length = 2, state_length = 1)
+  animate(gg, renderer = gifski_renderer(file)) %>% return()
 }
 
 ################ APPLICATION #########################
@@ -264,7 +307,7 @@ db_obs = simu_indiv(ID = (M+1) %>% as.character(), sample(seq(10, 20, 0.01), N, 
 # ################ INITIALISATION ######################
 # ini_hp = list('theta_k' = c(1,1), 'theta_i' = c(1, 1, 0.2))
 # 
-# #### TEST ####
+#### TEST ####
 # k = seq_len(2)
 # tau_i_k_test = replicate(length(k), rep(1,length(unique(db_train$ID)))) %>%
 #   apply(1,function(x) x / sum(x)) %>%
@@ -272,21 +315,28 @@ db_obs = simu_indiv(ID = (M+1) %>% as.character(), sample(seq(10, 20, 0.01), N, 
 #   `colnames<-`(unique(db_train$ID)) %>%
 #   apply(1, as.list)
 # 
-# prior_mean_k = list('K1' = 42, 'K2' = 45)
+# prior_mean_k = list('K1' = 42, 'K2' = 50)
 # ini_hp_test = list('theta_k' = c(2, 0.5, 0.1), 'theta_i' = c(1, 1, 0.2))
 # common_hp_k = T
 # common_hp_i = T
-## Training
+# # Training
 # t1 = Sys.time()
 # training_test = training_VEM(db_train, prior_mean_k, ini_hp_test, kernel_mu, kernel,
 #                              tau_i_k_test, common_hp_k, common_hp_i)
 # t2 = Sys.time()
 # c_time = (t2-t1) %>% print()
+# pi_k_test = lapply(training_test$param$tau_i_k, function(x) Reduce("+", x)/ length(x)) 
 # ## Posterior mu_k
 # timestamps = seq(10, 20, 0.01)
 # post_test = posterior_mu_k(db_train, timestamps, prior_mean_k, kernel_mu, kernel, training_test)
 # ## Pred GP
-# pred_gp_clust(db_obs, timestamps, post_test, kern = kernel,
-#              list('theta' = c(2,1), 'sigma' = 0.2, 'tau_k' = list('K1' = 0.4, 'K2' = 0.6) ))
-## Plot GP
-
+# pred_gp_test = pred_gp_clust(db_obs[1:5,], timestamps, post_test, kern = kernel,
+#              list('theta' = training_test$theta_i$`1`[1:2], 'sigma' = training_test$theta_i$`1`[[3]],
+#                   'tau_k' = pi_k_test ))
+# # Plot GP
+# plot_gp_clust(pred_gp_test, data = db_obs, data_train = db_train, mean = post_test$mean)
+# # Plot GIF
+# pred_gif = pred_gp_clust_animate(db_obs, timestamps, post_test, kern = kernel,
+#                       list('theta' = training_test$theta_i$`1`[1:2], 'sigma' = training_test$theta_i$`1`[[3]],
+#                            'tau_k' = pi_k_test ))
+# plot_animate(pred_gif, data = db_obs, data_train = db_train, mean = post_test$mean, file = "bla.gif")
