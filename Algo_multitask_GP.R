@@ -319,10 +319,11 @@ simu_indiv_test = function(ID, t, kern = kernel_mu, theta, mean, var)
 }
 
 #set.seed(42)
-M = 10
-N = 10
+M = 20
+N = 20
+t_i = sample(seq(10, 20, 0.05),N, replace = F) %>% sort()
 t = matrix(0, ncol = N, nrow = M)
-for(i in 1:M){t[i,] = sample(seq(10, 20, 0.05),N, replace = F) %>% sort()}
+for(i in 1:M){t[i,] = t_i}
 
 db_train = simu_indiv_test(ID = '1', t[1,], kernel_mu, theta = c(2,1), mean = 45, var = 0.2)
 for(i in 2:M)
@@ -334,7 +335,7 @@ for(i in 2:M)
   if(k == 3){db_train = rbind(db_train, simu_indiv_test(ID = as.character(i), t[i,], kernel_mu, theta = c(1,2), mean = 45, var = 0.4))}
   if(k == 4){db_train = rbind(db_train, simu_indiv_test(ID = as.character(i), t[i,], kernel_mu, theta = c(1,1), mean = 45, var = 0.5))}
 }
-db_obs = simu_indiv_test(ID = (M+1) %>% as.character(), sample(seq(10, 20, 0.02), N, replace = F) %>% sort(),
+db_obs = simu_indiv_test(ID = (M+1) %>% as.character(), t_i,
                     kernel_mu, theta = c(2,1), mean = 45, var = 0.2)
 
 # ################ INITIALISATION ######################
