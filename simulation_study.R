@@ -368,17 +368,17 @@ simu_var_M = function(db,  prior_mean, ini_hp, kern_0, kern_i, diff_M = T, commo
 #   }
 # }
 
-set.seed(42)
-for(i in c(T, F))
-{
-  for(j in c(T, F))
-  {
-    datasets_multi_M(rep = 100, vec_M = c(21, 51, 101, 151, 201), N = 30, G = seq(0, 10, 0.05), common_times = i,
-                     common_hp = j, kern_0 = kernel_mu, kern_i = kernel, int_mu_a = c(0,5), int_mu_b = c(0,2),
-                     int_i_a = c(0,5), int_i_b = c(0,2), int_i_sigma = c(0,2)) %>%
-      write_csv2(paste0('Simulations/Data/db_rep_100_M_20to200_N_30_time_', i, '_hp_', j,'.csv'))
-  }
-}
+# set.seed(42)
+# for(i in c(T, F))
+# {
+#   for(j in c(T, F))
+#   {
+#     datasets_multi_M(rep = 100, vec_M = c(21, 51, 101, 151, 201), N = 30, G = seq(0, 10, 0.05), common_times = i,
+#                      common_hp = j, kern_0 = kernel_mu, kern_i = kernel, int_mu_a = c(0,5), int_mu_b = c(0,2),
+#                      int_i_a = c(0,5), int_i_b = c(0,2), int_i_sigma = c(0,2)) %>%
+#       write_csv2(paste0('Simulations/Data/db_rep_100_M_20to200_N_30_time_', i, '_hp_', j,'.csv'))
+#   }
+# }
 
 
 ##### TABLE OF RESULTS ####
