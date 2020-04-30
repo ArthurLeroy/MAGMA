@@ -1,9 +1,9 @@
-setwd(dir = 'C:/Users/user/CloudStation/Maths/These/Processus Gaussiens/Code R/Algo multitask GP')
+setwd(dir = 'C:/Users/user/Google Drive/Travail/GitHub/gpclust/')
 source('Algo_multitask_GP.R')
 
 library(GPFDA)
 
-##### COMPETING ALGO IN SIMU ##
+##### COMPETING ALGO IN SIMU ####
 train_gpfda = function(db)
 {
   t1 = Sys.time()
@@ -379,6 +379,7 @@ for(i in c(T, F))
       write_csv2(paste0('Simulations/Data/db_rep_100_M_20to200_N_30_time_', i, '_hp_', j,'.csv'))
   }
 }
+
 
 ##### TABLE OF RESULTS ####
 

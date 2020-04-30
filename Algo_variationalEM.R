@@ -4,7 +4,7 @@ library(Matrix)
 library(mvtnorm)
 library(optimr)
 
-#setwd(dir = 'C:/Users/user/CloudStation/Maths/These/Processus Gaussiens/Code R/Algo multitask GP')
+#setwd(dir = 'C:/Users/user/Google Drive/Travail/GitHub/gpclust/')
 source('Computing_functions_VEM.R')
 
 ##### TRAINING FUNCTIONS ####
