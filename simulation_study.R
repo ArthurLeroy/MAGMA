@@ -132,10 +132,6 @@ datasets_multi_M = function(rep, vec_M, N, G, common_times, common_hp, kern_0, k
   return(multi_db)
 }
 
-# set.seed(42)
-# datasets_multi_M(rep = 10, vec_M = c(1,3,11, 51, 101, 151, 201), N = 30, G = seq(0, 10, 0.05), common_times = T,
-#                  common_hp = F, kern_0 = kernel_mu, kern_i = kernel, int_mu_a = c(0,5), int_mu_b = c(0,2), int_i_a = c(0,5),
-#                  int_i_b = c(0,2), int_i_sigma = c(0,1)) %>% write_csv2("Data simu/dataset_changing_M_time_T_hp_F.csv")
 
 datasets_multi_N = function(rep, M, N, G, common_times, common_hp, kern_0, kern_i,
                             int_mu_a, int_mu_b, int_i_a, int_i_b, int_i_sigma)
@@ -152,12 +148,6 @@ datasets_multi_N = function(rep, M, N, G, common_times, common_hp, kern_0, kern_
     }
   return(multi_db)
 }
-
-# set.seed(42)
-# datasets_multi_N(rep = 10, M = 21, N = 30, G = seq(0, 10, 0.05), common_times = T,
-#                  common_hp = F, kern_0 = kernel_mu, kern_i = kernel, int_mu_a = c(0,5), int_mu_b = c(0,2), int_i_a = c(0,5),
-#                  int_i_b = c(0,2), int_i_sigma = c(0,1)) %>% write_csv2("Data simu/dataset_changing_N_time_T_hp_F.csv")
-
 
 ##### EVALUATION FUNCTIONS #####
 
@@ -211,7 +201,7 @@ eval_methods = function(db_results, db_test)
 ##### FULL SIMULATION FUNCTION #####
 
 loop_training = function(db_loop, prior_mean, ini_hp, kern_0, kern_i, diff_M, common_times, common_hp)
-{
+{  
   ## Loop over the different datasets
   floop = function(i)
   {
@@ -237,27 +227,37 @@ loop_training = function(db_loop, prior_mean, ini_hp, kern_0, kern_i, diff_M, co
       list_train[[paste0('M=', j)]] = unique(db_M$ID_dataset) %>% as.character() %>%
                                       sapply(floop, simplify = FALSE, USE.NAMES = TRUE)
     }
-    return(list_train)
   }
   else
   {
     db_M = db_loop
-    unique(db_loop$ID_dataset) %>% as.character() %>% sapply(floop, simplify = FALSE, USE.NAMES = TRUE) %>% return()
+    list_train = unique(db_loop$ID_dataset) %>% as.character() %>% sapply(floop, simplify = FALSE, USE.NAMES = TRUE)
   }
+  
+  list_train %>% c(list('prior_mean' = prior_mean, 'ini_hp' = ini_hp, 'kern_0' = kern_0,'kern_i' =  kern_i,
+                        'diff_M' = diff_M, 'common_times' = common_times, 'common_hp' = common_hp)) %>% 
+  return()
 }
-test_loop_train = loop_training(bla2, prior_mean = 0, ini_hp = list('theta_0' = c(1,1), 'theta_i' = c(1, 1, 0.2)), 
-                                kern_0 = kernel_mu, kern_i = kernel, diff_M = F, common_times = T, common_hp = T)
 
-loop_pred = function(db_loop, train_loop, nb_obs, nb_test, prior_mean, ini_hp, kern_0, kern_i, diff_M,
-                     common_times, common_hp)
-{
+loop_pred = function(db_loop, train_loop, nb_obs, nb_test)
+{ ## Get the settings used for training
+  prior_mean = train_loop$prior_mean
+  ini_hp = train_loop$ini_hp
+  kern_0 = train_loop$kern_0
+  kern_i = train_loop$kern_i
+  diff_M = train_loop$diff_M
+  common_times = train_loop$common_times
+  common_hp = train_loop$common_hp
+  
   floop = function(i)
-  { ## Get trained model for GPFDA and our algo
-    model_algo = train_loop[[i]]$algo
+  { 
+    ## Get the trained model for GPFDA and our algo
+    model_algo = train_M[[i]]$algo
     list_hp = model_algo$hp
-    model_gpfda = train_loop[[i]]$gpfda
+    model_gpfda = train_M[[i]]$gpfda
+ 
     ## Get the corresponding database
-    db_i = db_loop %>% filter(ID_dataset == i)
+    db_i = db_M %>% filter(ID_dataset == i)
     db_train_i = db_i %>% filter(ID %notin% c(0,1))
     ## Select the 'nb_obs' first observations of the testing individual to predict with
     db_obs_i = db_i %>% filter(ID == 1) %>% top_n(- nb_obs, Timestamp)
@@ -281,25 +281,40 @@ loop_pred = function(db_loop, train_loop, nb_obs, nb_test, prior_mean, ini_hp, k
     else{res_gpfda =  tibble('Timestamp' = t_i_pred, 'Mean' = NA ,   'Var' = NA)}
     t4 = Sys.time()
     
+    ### Get MSE, RATIO IC95 and computing times on testing points for all methods 
     list('algo' = res_algo, 'Time_train_algo' = model_algo$Time_train, 'Time_pred_algo' = as.numeric(t2 - t1) ,
          'one_gp' = res_one_gp, 'Time_pred_one_gp' = as.numeric(t3 - t2)  ,
          'gpfda' = res_gpfda, 'Time_train_gpfda' = model_gpfda$Time_train, 'Time_pred_gpfda' = as.numeric(t4-t3)) %>%
     eval_methods(db_pred_i %>% pull(Output)) %>%
     return()
   }
-  list_eval = db_loop$ID_dataset %>% unique() %>% lapply(floop)
-  table_eval = do.call('rbind', list_eval) 
-  # %>% group_by(Method) %>%
-  #              summarise_all(list('Mean' = mean, 'SD' = sd), na.rm = TRUE) %>% return()
-  # 
+  
+  if(diff_M)
+  {
+    list_eval = tibble()
+    ## Removing data with only 1 individual (= the testing individual) or 2 indiv (gpfda doesn't run)
+    list_value_M = unique(db_loop$nb_M) %>% subset(. %notin% c(1,2))
+    ## Loop over the different values of M (optional)
+    for(j in list_value_M)
+    { 
+      db_M = db_loop %>% filter(nb_M == j)
+      train_M = train_loop[[paste0('M=', j)]]
+      eval_M = unique(db_M$ID_dataset) %>% as.character() %>% sapply(floop, simplify = FALSE, USE.NAMES = TRUE)
+      list_eval = list_eval %>% rbind(do.call('rbind', eval_M) %>% mutate('M' = j))
+    }
+    return(list_eval)
+  }
+  else
+  {
+    db_M = db_loop
+    train_M = train_loop
+    list_eval = db_M$ID_dataset %>% unique() %>% lapply(floop)
+    table_eval = do.call('rbind', list_eval) 
+    # %>% group_by(Method) %>%
+    #              summarise_all(list('Mean' = mean, 'SD' = sd), na.rm = TRUE) %>% return()
+    # 
+  }
 }
-
-test_loop_pred = loop_pred(bla2, test_loop_train, nb_obs = 20, nb_test = 10, prior_mean = 0,
-                           ini_hp = list('theta_0' = c(1,1), 'theta_i' = c(1, 1, 0.2)), 
-                           kern_0 = kernel_mu, kern_i = kernel, diff_M = F, common_times = T, common_hp = T)
-
-
-##### SIMULATION STUDY ####
 
 simu_var_N = function(db, nb_obs_max, nb_test, prior_mean, ini_hp, kern_0, kern_i, diff_M, common_times, common_hp,
                       plot = T)
@@ -310,10 +325,10 @@ simu_var_N = function(db, nb_obs_max, nb_test, prior_mean, ini_hp, kern_0, kern_
   {
     loop_pred = loop_pred(db, loop_train, nb_obs = i, nb_test, prior_mean, ini_hp, 
                           kern_0, kern_i, diff_M = F, common_times, common_hp) %>% mutate('N' = i) %>% 
-    return()
+      return()
   }
   res_n = lapply(1:nb_obs_max, floop) %>% do.call('rbind', .)
-
+  
   if(plot)
   {
     ggplot(res_n) + geom_boxplot(aes(x = as.factor(N), y = MSE_Mean, fill = Method))
@@ -321,16 +336,76 @@ simu_var_N = function(db, nb_obs_max, nb_test, prior_mean, ini_hp, kern_0, kern_
   return(res_n)
 }
 
-test_res_n = simu_var_N(bla2, nb_obs_max = 20, nb_test = 10, prior_mean = 0,
-              ini_hp = list('theta_0' = c(1,1), 'theta_i' = c(1, 1, 0.2)), 
-              kern_0 = kernel_mu, kern_i = kernel, diff_M = F, common_times = T, common_hp = T)
-
-simu_var_M = function(db, prior_mean, ini_hp, kern_0, kern_i, diff_M, common_times, common_hp, graph = T)
+simu_var_M = function(db,  prior_mean, ini_hp, kern_0, kern_i, diff_M = T, common_times, common_hp, graph = T)
 {
   
 }
 
 
+##### INITIALISATION #####
+
+# M = 10
+# N = 10
+# G = seq(0,10, 0.05)
+# int_mu_a = c(0,10)
+# int_mu_b = c(0,10)
+# int_i_a = c(0,10)
+# int_i_b = c(0,10)
+# int_i_sigma = c(0,10)
+
+
+##### SIMULATION DATASETS ####
+
+# set.seed(42)
+# for(i in c(T, F))
+# {
+#   for(j in c(T, F))
+#   {
+#     datasets_multi_N(rep = 100, M = 21, N = 30, G = seq(0, 10, 0.05), common_times = i,
+#                      common_hp = j, kern_0 = kernel_mu, kern_i = kernel, int_mu_a = c(0,5), int_mu_b = c(0,2),
+#                      int_i_a = c(0,5), int_i_b = c(0,2), int_i_sigma = c(0,2)) %>%
+#     write_csv2(paste0('Simulations/Data/db_rep_100_M_20_N_30_time_', i, '_hp_', j,'.csv'))
+#   }
+# }
+
+set.seed(42)
+for(i in c(T, F))
+{
+  for(j in c(T, F))
+  {
+    datasets_multi_M(rep = 100, vec_M = c(21, 51, 101, 151, 201), N = 30, G = seq(0, 10, 0.05), common_times = i,
+                     common_hp = j, kern_0 = kernel_mu, kern_i = kernel, int_mu_a = c(0,5), int_mu_b = c(0,2),
+                     int_i_a = c(0,5), int_i_b = c(0,2), int_i_sigma = c(0,2)) %>%
+      write_csv2(paste0('Simulations/Data/db_rep_100_M_20to200_N_30_time_', i, '_hp_', j,'.csv'))
+  }
+}
+
+##### TABLE OF RESULTS ####
+
+test_res_n = simu_var_N(bla2, nb_obs_max = 20, nb_test = 10, prior_mean = 0,
+                        ini_hp = list('theta_0' = c(1,1), 'theta_i' = c(1, 1, 0.2)), 
+                        kern_0 = kernel_mu, kern_i = kernel, diff_M = F, common_times = T, common_hp = T)
+
+
+##### PLOT OF RESULTS #### 
+# ggplot(test_res_n) + geom_boxplot(aes(x = as.factor(N), y = MSE, fill = Method), outlier.shape = NA)
+# ggplot(test_loop_pred) + geom_boxplot(aes(x = as.factor(M), y = MSE, fill = Method))
+
+
+##### TESTS SIMU ####
+# bla_db = datasets_multi_N(rep = 10, M = 21, N = 30, G = seq(0, 10, 0.05), common_times = T,
+#                           common_hp = F, kern_0 = kernel_mu, kern_i = kernel, int_mu_a = c(0,5), int_mu_b = c(0,2),
+#                           int_i_a = c(0,5), int_i_b = c(0,2), int_i_sigma = c(0,1))
+#
+# bla_db2 = datasets_multi_M(rep = 10, vec_M = c(3, 11, 21), N = 30, G = seq(0, 10, 0.05), common_times = T,
+#                           common_hp = F, kern_0 = kernel_mu, kern_i = kernel, int_mu_a = c(0,5), int_mu_b = c(0,2),
+#                           int_i_a = c(0,5), int_i_b = c(0,2), int_i_sigma = c(0,1))
+# 
+# test_loop_train = loop_training(bla_db, prior_mean = 0, ini_hp = list('theta_0' = c(1,1), 'theta_i' = c(1, 1, 0.2)), 
+#                                 kern_0 = kernel_mu, kern_i = kernel, diff_M = T, common_times = T, common_hp = T)
+# 
+# test_loop_pred = loop_pred(bla_db, test_loop_train, nb_obs =20, nb_test = 10)
+# 
 
 ##### OLD SIMULATION STUDY ##### 
 # db_train = simu_scheme(M = 10, N = 10, G = seq(0, 10, 0.05))
@@ -377,19 +452,6 @@ simu_var_M = function(db, prior_mean, ini_hp, kern_0, kern_i, diff_M, common_tim
 # lines(b1$predtime,b1$ypred[,3],lty=2,col=2)
 # points(xt,yt)
 # 
-
-##### INITIALISATION #####
-
-# M = 10
-# N = 10
-# G = seq(0,10, 0.05)
-# int_mu_a = c(0,10)
-# int_mu_b = c(0,10)
-# int_i_a = c(0,10)
-# int_i_b = c(0,10)
-# int_i_sigma = c(0,10)
-# int_test = c(2, (N-1))
-#ratio_train_set = 0.3
 
 ##### OLD FUNCTIONS ####
 # split_train = function(db, ratio_train)
