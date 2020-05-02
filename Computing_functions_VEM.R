@@ -194,6 +194,10 @@ logL_GP_mod = function(hp, db, mean, kern, new_cov)
   ## new_cov : posterior covariance matrix of the mean GP (mu_0). Used to compute correction term (cor_term)
   ####
   ##return : value of the modified Gaussian log-likelihood for one GP as it appears in the model
+  
+  ## To avoid pathological behaviour of the opm optimization function in rare cases
+  if((hp %>% abs %>% sum) > 20){return(10^10)}
+  
   if(length(mean) == 1){mean = rep(mean, nrow(db))} ## mean is equal for all timestamps
   sigma = ifelse((length(hp) == 3), hp[[3]], 0.1) ## mean GP (mu_0) is noiseless and thus has only 2 hp
   
@@ -215,6 +219,9 @@ logL_GP_mod_common_hp_k = function(hp, db, mean, kern, new_cov)
   ####
   ##return : value of the modified Gaussian log-likelihood for the sum of the k mean GPs with same HPs
 
+  ## To avoid pathological behaviour of the opm optimization function in rare cases
+  if((hp %>% abs %>% sum) > 20){return(10^10)}
+  
   sigma = ifelse((length(hp) == 3), hp[[3]], 0.1) ## mean GP is noiseless (0.1 is for computational issues) has only 2 hp
   list_ID_k = names(db)
   t_k = db[[1]] %>% pull(Timestamp)
@@ -240,6 +247,9 @@ logL_clust_multi_GP = function(hp, db, mu_k_param, kern)
   ## kern : kernel used to compute the covariance matrix at corresponding timestamps
   ####
   ##return : value of the modified Gaussian log-likelihood for one GP as it appears in the model
+  
+  ## To avoid pathological behaviour of the opm optimization function in rare cases
+  if((hp %>% abs %>% sum) > 20){return(10^10)}
   
   sigma = ifelse((length(hp) == 3), hp[[3]], 0.1) ## mean GP (mu_0) is noiseless and thus has only 2 hp
   names_k = mu_k_param$mean %>% names()
@@ -272,6 +282,9 @@ logL_clust_multi_GP_common_hp_i = function(hp, db, mu_k_param, kern)
   ## kern : kernel used to compute the covariance matrix at corresponding timestamps
   ####
   ##return : value of the modified Gaussian log-likelihood for one GP as it appears in the model
+  
+  ## To avoid pathological behaviour of the opm optimization function in rare cases
+  if((hp %>% abs %>% sum) > 20){return(10^10)}
   
   sigma = ifelse((length(hp) == 3), hp[[3]], 0.1) ## mean GP (mu_0) is noiseless and thus has only 2 hp
   names_k = mu_k_param$mean %>% names()

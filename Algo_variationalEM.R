@@ -78,6 +78,8 @@ train_new_gp_VEM = function(db, param_mu_k, ini_hp, kern_i, hp)
     
     floop = function(k)
     {
+      ## To avoid pathological behaviour of the opm optimization function in rare cases
+      if((hp %>% abs %>% sum) > 20){return(10^10)}
       
       - tau_k[[k]] * dmvnorm(db$Output, mean_mu[[k]], 
                              solve(kern_to_cov(db$Timestamp, kern, theta = hp[1:2], sigma = hp[3]) + cov_mu_k[[k]]),

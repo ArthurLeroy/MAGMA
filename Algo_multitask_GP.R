@@ -10,7 +10,7 @@ library(gifski)
 library(png)
 
 
-setwd(dir = 'C:/Users/user/CloudStation/Maths/These/Processus Gaussiens/Code R/Algo multitask GP')
+#setwd(dir = 'C:/Users/user/CloudStation/Maths/These/Processus Gaussiens/Code R/Algo multitask GP')
 source('Computing_functions.R')
 
 ################ TRAINING FUNCTIONS ################## 
@@ -23,6 +23,7 @@ training = function(db, prior_mean, ini_hp, kern_0, kern_i, common_hp = T)
   ####
   ## return : list of trained HP, boolean to indicate convergence
   n_loop_max = 25
+  db$ID = db$ID %>% as.character
   list_ID = unique(db$ID)
   hp = list('theta_0' = ini_hp$theta_0, 
             'theta_i' = ini_hp$theta_i %>% list() %>% rep(length(list_ID))  %>% setNames(nm = list_ID))
@@ -31,7 +32,7 @@ training = function(db, prior_mean, ini_hp, kern_0, kern_i, common_hp = T)
   list_plot = list()
   t1 = Sys.time()
   for(i in 1:n_loop_max)
-  { 
+  { #browser()
     print(i)
     ## E-Step
     param = e_step(db, prior_mean, kern_0, kern_i, hp)   
@@ -64,25 +65,22 @@ training = function(db, prior_mean, ini_hp, kern_0, kern_i, common_hp = T)
     logLL_monitoring = new_logLL_monitoring
   }
   t2 = Sys.time()
-  list('hp' = new_hp, 'convergence' = cv, 'param' = param, 'Time_train' = as.numeric(t2-t1)) %>% 
+  list('hp' = new_hp, 'convergence' = cv, 'param' = param, 'Time_train' =  difftime(t2, t1, units = "secs")) %>% 
   return()
 }
 
 train_new_gp = function(db, mean_mu, cov_mu, ini_hp, kern_i)
-{
+{ 
   if(is.vector(mean_mu)){mean = mean_mu} 
   else {mean = mean_mu %>% filter(Timestamp %in% db$Timestamp) %>% pull(Output) %>% as.vector}
+  if(length(mean) == 1){mean = rep(mean, length(db$Timestamp))}
   
   if(is.matrix(cov_mu)){new_cov = cov_mu[paste0('X', db$Timestamp), paste0('X', db$Timestamp)]}
   else {new_cov = 0}
   
-  LL_GP<- function(hp, db, kern) 
-  {
-    return(-dmvnorm(db$Output, mean, solve(kern_to_cov(db$Timestamp, kern, theta = hp[1:2], sigma = hp[3]) + new_cov),
-                    log = T))
-  }
-  new_hp = opm(ini_hp, fn = LL_GP, gr = NULL, kern = kern_i, db = db, method = "L-BFGS-B", control = list(kkt = FALSE)) 
-  list('theta' = new_hp[1:2], 'sigma' = new_hp[3]) %>% return()
+  new_hp = opm(ini_hp, fn = logL_GP, gr = gr_GP, db = db, mean = mean, kern = kern_i, new_cov = new_cov,
+               method = "L-BFGS-B", control = list(kkt = FALSE)) 
+  list('theta' = new_hp[1:2], 'sigma' = new_hp[3], 'opm' = new_hp) %>% return()
 }
 
 ################ PREDICTION FUNCTIONS ################
@@ -149,7 +147,8 @@ pred_gp = function(db, timestamps = NULL, mean_mu = 0, cov_mu = NULL,
     mean_mu_pred = mean_mu %>% filter(Timestamp %in% timestamps) %>% pull(Output)
   }
   
-  inv_mat = (kern_to_cov(tn, kern, theta, sigma) + cov_mu[input, input]) %>% solve()
+  cov_tn_tn = kern_to_cov(tn, kern, theta, sigma) + cov_mu[input, input]
+  inv_mat = tryCatch(solve(cov_tn_tn), error = function(e){MASS::ginv(cov_tn_tn)}) 
   cov_tn_t = kern(mat_dist(tn, timestamps), theta) + cov_mu[input,input_t]
 
   cov_t_t = kern_to_cov(timestamps, kern, theta, sigma) + cov_mu[input_t ,input_t]
@@ -277,7 +276,7 @@ full_algo = function(db, new_db, timestamps, kern_i, common_hp = T, plot = T, pr
   
   ## If mean GP (mu_0) paramaters at prediction timestamps are not provided , compute them
   if(is.null(mu)){mu = posterior_mu(db, new_db, timestamps, prior_mean, kern_0, kern_i, list_hp)}
-  
+
   ## If hyperparameters of the GP for the new individuals are not provided, learn them
   ## If hyperparameters are common across individuals by hypothesis, simply pick them up from the trained model
   if(is.null(hp_new_i) & common_hp){hp_new_i = list('theta' = list_hp$theta_i[[1]][1:2], 
@@ -319,11 +318,10 @@ simu_indiv_test = function(ID, t, kern = kernel_mu, theta, mean, var)
 }
 
 #set.seed(42)
-M = 20
-N = 20
-t_i = sample(seq(10, 20, 0.05),N, replace = F) %>% sort()
+M = 10
+N = 10
 t = matrix(0, ncol = N, nrow = M)
-for(i in 1:M){t[i,] = t_i}
+for(i in 1:M){t[i,] = sample(seq(10, 20, 0.05),N, replace = F) %>% sort()}
 
 db_train = simu_indiv_test(ID = '1', t[1,], kernel_mu, theta = c(2,1), mean = 45, var = 0.2)
 for(i in 2:M)
@@ -335,7 +333,7 @@ for(i in 2:M)
   if(k == 3){db_train = rbind(db_train, simu_indiv_test(ID = as.character(i), t[i,], kernel_mu, theta = c(1,2), mean = 45, var = 0.4))}
   if(k == 4){db_train = rbind(db_train, simu_indiv_test(ID = as.character(i), t[i,], kernel_mu, theta = c(1,1), mean = 45, var = 0.5))}
 }
-db_obs = simu_indiv_test(ID = (M+1) %>% as.character(), t_i,
+db_obs = simu_indiv_test(ID = (M+1) %>% as.character(), sample(seq(10, 20, 0.05),N, replace = F) %>% sort(),
                     kernel_mu, theta = c(2,1), mean = 45, var = 0.2)
 
 # ################ INITIALISATION ######################
@@ -345,11 +343,12 @@ m_0 = 0
 ##### Testing codes ############
 
 ## Testing the full_algo function
-# bla = training(db_train, 0, ini_hp, kernel_mu, kernel)
-# list_hp_test = bla[c('theta_0','theta_i')]
-# blab = full_algo(db_train, db_obs[1:5,], seq(9, 20, 0.02), kernel, common_hp = T, plot = T, prior_mean = m_0,
+# bla = training(db_train, 0, ini_hp, kernel_mu, kernel, common_hp = F)
+# list_hp_test = bla$hp[c('theta_0','theta_i')]
+# blab = full_algo(db_train, db_obs[1:5,], seq(9, 20, 0.02), kernel, common_hp = F, plot = T, prior_mean = 0,
 #                  kern_0 = kernel_mu, list_hp = list_hp_test, mu = NULL, ini_hp = ini_hp, hp_new_i = NULL)
-# plot_gp(blab$Prediction, db_obs[3:7,])
+
+#plot_gp(blab$Prediction, data = db_obs)
 
 # hp_one_gp = list('theta' = c(5,2), 'sigma' = 0.2)
 # fu = pred_gp(db_obs[3:7,], seq(10, 20, 0.05), mean_mu = 0 , cov_mu = NULL, kernel,

@@ -1,4 +1,4 @@
-setwd(dir = 'C:/Users/user/Google Drive/Travail/GitHub/gpclust/')
+#setwd(dir = 'C:/Users/user/Google Drive/Travail/GitHub/gpclust/')
 source('Algo_multitask_GP.R')
 
 library(GPFDA)
@@ -20,7 +20,7 @@ train_gpfda = function(db)
   model = gpfr(response=(fy1), lReg=lx, fReg=NULL, gpReg=list(fx1), fyList=list(nbasis=23,lambda=0.1), fbetaList_l=NULL,
            hyper=NULL, Cov=c('pow.ex', 'linear'), fitting=T, time = t_obs, rPreIdx=T, concurrent=T) 
   t2 = Sys.time()
-  model[['Time_train']] = as.numeric(t2 - t1)
+  model[['Time_train']] =  difftime(t2, t1, units = "secs")
   
   return(model)
 }
@@ -125,8 +125,9 @@ datasets_multi_M = function(rep, vec_M, N, G, common_times, common_hp, kern_0, k
   {
     for(j in seq_len(rep))
     {
-      multi_db = rbind(multi_db, simu_scheme(i, N, G, common_times, common_hp, kern_0, kern_i, int_mu_a, int_mu_b,
-                                             int_i_a, int_i_b, int_i_sigma) %>% mutate('nb_M' = i, 'ID_dataset' = j))
+      multi_db = rbind(multi_db, simu_scheme(i, N, G, common_times, common_hp, kern_0, kern_i, 
+                                             int_mu_a, int_mu_b,int_i_a, int_i_b, int_i_sigma) %>%
+                                 mutate('nb_M' = i, 'ID_dataset' = as.character(j)))
     }
   }
   return(multi_db)
@@ -144,7 +145,7 @@ datasets_multi_N = function(rep, M, N, G, common_times, common_hp, kern_0, kern_
     for(j in seq_len(rep))
     {
       multi_db = rbind(multi_db, simu_scheme(M, N, G, common_times, common_hp, kern_0, kern_i, int_mu_a, int_mu_b,
-                                             int_i_a, int_i_b, int_i_sigma) %>% mutate('ID_dataset' = j))
+                                             int_i_a, int_i_b, int_i_sigma) %>% mutate('ID_dataset' = as.character(j)))
     }
   return(multi_db)
 }
@@ -210,7 +211,7 @@ loop_training = function(db_loop, prior_mean, ini_hp, kern_0, kern_i, diff_M, co
     db_train = db_M %>% filter(ID_dataset == i) %>% filter(!(ID %in% c(0,1))) %>%
                            dplyr::select('ID', 'Timestamp', 'Output')
     
-    if(common_times){model_gpfda = train_gpfda(db_train)}
+    if(common_times){model_gpfda = train_gpfda(db_train)}else{model_gpfda = list('Time_train' = 0)}
     list_hp = training(db_train, prior_mean, ini_hp, kern_0, kern_i, common_hp)[c('hp', 'Time_train')]
     list('gpfda' = model_gpfda, 'algo' = list_hp) %>% return()
   }
@@ -240,7 +241,9 @@ loop_training = function(db_loop, prior_mean, ini_hp, kern_0, kern_i, diff_M, co
 }
 
 loop_pred = function(db_loop, train_loop, nb_obs, nb_test)
-{ ## Get the settings used for training
+{
+  db_loop$ID = db_loop$ID %>% as.character
+  ## Get the settings used for training
   prior_mean = train_loop$prior_mean
   ini_hp = train_loop$ini_hp
   kern_0 = train_loop$kern_0
@@ -248,7 +251,7 @@ loop_pred = function(db_loop, train_loop, nb_obs, nb_test)
   diff_M = train_loop$diff_M
   common_times = train_loop$common_times
   common_hp = train_loop$common_hp
-  
+
   floop = function(i)
   { 
     ## Get the trained model for GPFDA and our algo
@@ -280,11 +283,12 @@ loop_pred = function(db_loop, train_loop, nb_obs, nb_test)
     if(common_times){res_gpfda = pred_gpfda(model_gpfda, db_obs_i, t_i_pred)}
     else{res_gpfda =  tibble('Timestamp' = t_i_pred, 'Mean' = NA ,   'Var' = NA)}
     t4 = Sys.time()
+
     
     ### Get MSE, RATIO IC95 and computing times on testing points for all methods 
-    list('algo' = res_algo, 'Time_train_algo' = model_algo$Time_train, 'Time_pred_algo' = as.numeric(t2 - t1) ,
-         'one_gp' = res_one_gp, 'Time_pred_one_gp' = as.numeric(t3 - t2)  ,
-         'gpfda' = res_gpfda, 'Time_train_gpfda' = model_gpfda$Time_train, 'Time_pred_gpfda' = as.numeric(t4-t3)) %>%
+    list('algo' = res_algo, 'Time_train_algo' = model_algo$Time_train, 'Time_pred_algo' = difftime(t2, t1, units = "secs"),
+         'one_gp' = res_one_gp, 'Time_pred_one_gp' =  difftime(t3, t2, units = "secs"),
+         'gpfda' = res_gpfda, 'Time_train_gpfda' = model_gpfda$Time_train, 'Time_pred_gpfda' =  difftime(t4, t3, units = "secs")) %>%
     eval_methods(db_pred_i %>% pull(Output)) %>%
     return()
   }
@@ -300,7 +304,8 @@ loop_pred = function(db_loop, train_loop, nb_obs, nb_test)
       db_M = db_loop %>% filter(nb_M == j)
       train_M = train_loop[[paste0('M=', j)]]
       eval_M = unique(db_M$ID_dataset) %>% as.character() %>% sapply(floop, simplify = FALSE, USE.NAMES = TRUE)
-      list_eval = list_eval %>% rbind(do.call('rbind', eval_M) %>% mutate('M' = j))
+      list_eval = list_eval %>% rbind(do.call('rbind', eval_M) %>% 
+                  mutate(Time_train = as.numeric(Time_train), Time_pred = as.numeric(Time_pred), 'M' = j))
     }
     return(list_eval)
   }
@@ -309,38 +314,107 @@ loop_pred = function(db_loop, train_loop, nb_obs, nb_test)
     db_M = db_loop
     train_M = train_loop
     list_eval = db_M$ID_dataset %>% unique() %>% lapply(floop)
-    table_eval = do.call('rbind', list_eval) 
+    do.call('rbind', list_eval) %>% 
+    mutate(Time_train = as.numeric(Time_train), Time_pred = as.numeric(Time_pred)) %>% 
+    return()
     # %>% group_by(Method) %>%
     #              summarise_all(list('Mean' = mean, 'SD' = sd), na.rm = TRUE) %>% return()
     # 
   }
 }
 
-simu_var_N = function(db, nb_obs_max, nb_test, prior_mean, ini_hp, kern_0, kern_i, diff_M, common_times, common_hp,
+simu_var_N = function(db, nb_obs_max, nb_test, prior_mean, ini_hp, kern_0, kern_i, common_times, common_hp,
                       plot = T)
 {
   loop_train = loop_training(db, prior_mean, ini_hp, kern_0, kern_i, diff_M = F, common_times, common_hp)
-  
+
   floop = function(i)
   {
-    loop_pred = loop_pred(db, loop_train, nb_obs = i, nb_test, prior_mean, ini_hp, 
-                          kern_0, kern_i, diff_M = F, common_times, common_hp) %>% mutate('N' = i) %>% 
+    loop_pred = loop_pred(db, loop_train, nb_obs = i, nb_test) %>% mutate('N' = i) %>% 
       return()
   }
   res_n = lapply(1:nb_obs_max, floop) %>% do.call('rbind', .)
   
   if(plot)
   {
-    ggplot(res_n) + geom_boxplot(aes(x = as.factor(N), y = MSE_Mean, fill = Method))
+    ggplot(res_n) + geom_boxplot(aes(x = as.factor(N), y = MSE, fill = Method)) %>% print()
   }
   return(res_n)
 }
 
-simu_var_M = function(db,  prior_mean, ini_hp, kern_0, kern_i, diff_M = T, common_times, common_hp, graph = T)
+simu_var_M = function(db,  prior_mean, ini_hp, kern_0, kern_i, diff_M = T, common_times, common_hp, plot = T)
 {
   
 }
 
+eval_mu = function(db, prior_mean, ini_hp, kern_0, kern_i, diff_M = T, common_times, common_hp,
+                   plot = T)
+{
+  train_loop = loop_training(db, prior_mean, ini_hp, kern_0, kern_i, diff_M, common_times, common_hp)
+  ## Set IDs as characters in the database
+  db_$ID = db_loop$ID %>% as.character 
+  db_$ID_dataset = db_loop$ID_dataset %>% as.character
+
+  floop = function(i)
+  { 
+    ## Get the trained model for GPFDA and our algo
+    model_algo = train_M[[i]]$algo
+    list_hp = model_algo$hp
+    model_gpfda = train_M[[i]]$gpfda
+    
+    ## Get the corresponding database
+    db_i = db_M %>% filter(ID_dataset == i)
+    db_train_i = db_i %>% filter(ID %notin% c(0,1))
+    ## Select the true value of the mean process to evaluate predictions on 
+    db_pred_mu = db_i %>% filter(ID == 0)
+    ## Get timestamps to predict on
+    t_pred = db_pred_mu %>% pull(Timestamp)
+    
+    t1 = Sys.time()
+    ## Estimation of the posterior mean process p(mu|data) for our algo
+    res_algo = full_algo(db_train_i, db_obs_i, t_i_pred, kern_i, common_hp, plot = F, prior_mean, kern_0,
+                         list_hp, mu = NULL, ini_hp, hp_new_i = NULL)$Prediction
+    t2 = Sys.time()
+    ## ## Estimation of the mean process for GPFDA (deterministic function)
+    if(common_times){res_gpfda = mean_gpfda(model_gpfda, t_i_pred)}
+    else{res_gpfda =  tibble('Timestamp' = t_i_pred, 'Mean' = NA ,   'Var' = NA)}
+    t3 = Sys.time()
+    
+    
+    ### Get MSE, RATIO IC95 and computing times on testing points for all methods 
+    list('algo' = res_algo, 'Time_train_algo' = model_algo$Time_train, 'Time_pred_algo' = difftime(t2, t1, units = "secs"),
+         'one_gp' = res_one_gp, 'Time_pred_one_gp' =  difftime(t3, t2, units = "secs"),
+         'gpfda' = res_gpfda, 'Time_train_gpfda' = model_gpfda$Time_train, 'Time_pred_gpfda' =  difftime(t4, t3, units = "secs")) %>%
+      eval_methods(db_pred_i %>% pull(Output)) %>%
+      return()
+  }
+  
+  if(diff_M)
+  {
+    list_eval = tibble()
+    ## Removing data with only 1 individual (= the testing individual) or 2 indiv (gpfda doesn't run)
+    list_value_M = unique(db_loop$nb_M) %>% subset(. %notin% c(1,2))
+    ## Loop over the different values of M (optional)
+    for(j in list_value_M)
+    { 
+      db_M = db_loop %>% filter(nb_M == j)
+      train_M = train_loop[[paste0('M=', j)]]
+      eval_M = unique(db_M$ID_dataset) %>% as.character() %>% sapply(floop, simplify = FALSE, USE.NAMES = TRUE)
+      list_eval = list_eval %>% rbind(do.call('rbind', eval_M) %>% 
+                  mutate(Time_train = as.numeric(Time_train), Time_pred = as.numeric(Time_pred), 'M' = j))
+    }
+    return(list_eval)
+  }
+  else
+  {
+    db_M = db_loop
+    train_M = train_loop
+    list_eval = db_M$ID_dataset %>% unique() %>% lapply(floop)
+    do.call('rbind', list_eval) %>% 
+    mutate(Time_train = as.numeric(Time_train), Time_pred = as.numeric(Time_pred)) %>% 
+    return()
+  }
+}
 
 ##### INITIALISATION #####
 
@@ -383,30 +457,65 @@ simu_var_M = function(db,  prior_mean, ini_hp, kern_0, kern_i, diff_M = T, commo
 
 ##### TABLE OF RESULTS ####
 
-test_res_n = simu_var_N(bla2, nb_obs_max = 20, nb_test = 10, prior_mean = 0,
+tableTT = read_csv2("Simulations/Data/db_rep_100_M_20_N_30_time_TRUE_hp_TRUE.csv")
+tableTT$ID = as.character(tableTT$ID)
+tableTT$ID_dataset = as.character(tableTT$ID_dataset)
+tableTF = read_csv2("Simulations/Data/db_rep_100_M_20_N_30_time_TRUE_hp_FALSE.csv")
+tableTF$ID = as.character(tableTF$ID)
+tableTF$ID_dataset = as.character(tableTF$ID_dataset)
+tableFT = read_csv2("Simulations/Data/db_rep_100_M_20_N_30_time_FALSE_hp_TRUE.csv")
+tableFT$ID = as.character(tableFT$ID)
+tableFT$ID_dataset = as.character(tableFT$ID_dataset)
+tableFF = read_csv2("Simulations/Data/db_rep_100_M_20_N_30_time_FALSE_hp_FALSE.csv")
+tableFF$ID = as.character(tableFF$ID)
+tableFF$ID_dataset = as.character(tableFF$ID_dataset)
+
+
+res_TT = simu_var_N(tableTT, nb_obs_max = 20, nb_test = 10, prior_mean = 0,
                         ini_hp = list('theta_0' = c(1,1), 'theta_i' = c(1, 1, 0.2)), 
-                        kern_0 = kernel_mu, kern_i = kernel, diff_M = F, common_times = T, common_hp = T)
+                        kern_0 = kernel_mu, kern_i = kernel, common_times = T, common_hp = T)
+
+res_TF = simu_var_N(tableTF, nb_obs_max = 20, nb_test = 10, prior_mean = 0,
+                   ini_hp = list('theta_0' = c(1,1), 'theta_i' = c(1, 1, 0.2)), 
+                   kern_0 = kernel_mu, kern_i = kernel, common_times = T, common_hp = F)
+
+res_FT = simu_var_N(tableFT, nb_obs_max = 20, nb_test = 10, prior_mean = 0,
+                   ini_hp = list('theta_0' = c(1,1), 'theta_i' = c(1, 1, 0.2)), 
+                   kern_0 = kernel_mu, kern_i = kernel, common_times = F, common_hp = T)
+
+res_FF = simu_var_N(tableFF, nb_obs_max = 20, nb_test = 10, prior_mean = 0,
+                   ini_hp = list('theta_0' = c(1,1), 'theta_i' = c(1, 1, 0.2)), 
+                   kern_0 = kernel_mu, kern_i = kernel, common_times = F, common_hp = F)
+
+res_TF %>%  group_by(Method) %>%
+  summarise_all(list('Mean' = mean, 'SD' = sd), na.rm = TRUE) %>% return()
 
 
 ##### PLOT OF RESULTS #### 
 # ggplot(test_res_n) + geom_boxplot(aes(x = as.factor(N), y = MSE, fill = Method), outlier.shape = NA)
-# ggplot(test_loop_pred) + geom_boxplot(aes(x = as.factor(M), y = MSE, fill = Method))
+ggplot(res_TF) + geom_boxplot(aes(x = as.factor(N), y = MSE, fill = Method)) + 
+scale_y_continuous(limits = c(0,100))
 
 
 ##### TESTS SIMU ####
 # bla_db = datasets_multi_N(rep = 10, M = 21, N = 30, G = seq(0, 10, 0.05), common_times = T,
 #                           common_hp = F, kern_0 = kernel_mu, kern_i = kernel, int_mu_a = c(0,5), int_mu_b = c(0,2),
 #                           int_i_a = c(0,5), int_i_b = c(0,2), int_i_sigma = c(0,1))
-#
+
 # bla_db2 = datasets_multi_M(rep = 10, vec_M = c(3, 11, 21), N = 30, G = seq(0, 10, 0.05), common_times = T,
 #                           common_hp = F, kern_0 = kernel_mu, kern_i = kernel, int_mu_a = c(0,5), int_mu_b = c(0,2),
 #                           int_i_a = c(0,5), int_i_b = c(0,2), int_i_sigma = c(0,1))
 # 
-# test_loop_train = loop_training(bla_db, prior_mean = 0, ini_hp = list('theta_0' = c(1,1), 'theta_i' = c(1, 1, 0.2)), 
-#                                 kern_0 = kernel_mu, kern_i = kernel, diff_M = T, common_times = T, common_hp = T)
-# 
+# test_loop_train = loop_training(bla_db, prior_mean = 0, ini_hp = list('theta_0' = c(1,1), 'theta_i' = c(1, 1, 0.2)),
+#                                 kern_0 = kernel_mu, kern_i = kernel, diff_M = F, common_times = T, common_hp = T)
+
 # test_loop_pred = loop_pred(bla_db, test_loop_train, nb_obs =20, nb_test = 10)
 # 
+# test_res = simu_var_N(bla_db, nb_obs_max = 20, nb_test = 10, prior_mean = 0,
+#                       ini_hp = list('theta_0' = c(1,1), 'theta_i' = c(1, 1, 0.2)), 
+#                       kern_0 = kernel_mu, kern_i = kernel, common_times = T, common_hp = T)
+# test_res %>% group_by(Method) %>% summarise_all(list('Mean' = mean, 'SD' = sd), na.rm = TRUE)
+#   
 
 ##### OLD SIMULATION STUDY ##### 
 # db_train = simu_scheme(M = 10, N = 10, G = seq(0, 10, 0.05))

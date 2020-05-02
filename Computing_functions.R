@@ -131,8 +131,8 @@ kern_to_inv = function(x, kern = kernel, theta = c(1, 0.5), sigma = 0.2)
       M = dist(x)^2
       mat = as.matrix(kern(M, theta)) + diag(sigma^2 + exp(theta[[1]]) ,length(x))
     }
-    #inv = tryCatch(solve(mat), error = function(e){MASS::ginv(mat)})
-    inv = solve(mat)
+    inv = tryCatch(solve(mat), error = function(e){MASS::ginv(mat)})
+    #inv = solve(mat)
     rownames(inv) = paste0('X', x)
     colnames(inv) = paste0('X', x)
     return(inv)
@@ -160,8 +160,8 @@ kern_to_inv = function(x, kern = kernel, theta = c(1, 0.5), sigma = 0.2)
         M = dist(indiv)^2
         mat = as.matrix(kern(M, theta[[i]][1:2])) + diag(theta[[i]][3]^2 + exp(theta[[i]][1]), length(indiv))
       }
-      #inv = tryCatch(solve(mat), error = function(e){MASS::ginv(mat)})
-      inv = solve(mat)
+      inv = tryCatch(solve(mat), error = function(e){MASS::ginv(mat)})
+      #inv = solve(mat)
       rownames(inv) = paste0('X', indiv)
       colnames(inv) = paste0('X', indiv)
       return(inv)
@@ -173,6 +173,16 @@ kern_to_inv = function(x, kern = kernel, theta = c(1, 0.5), sigma = 0.2)
 }
 
 ##### LOGLIKELIHOOD FUNCTIONS ####
+logL_GP<- function(hp, db, mean, kern, new_cov) 
+{
+  ## To avoid pathological behaviour of the opm optimization function in rare cases
+  if((hp %>% abs %>% sum) > 20){return(10^10)}
+  
+  cov = kern_to_cov(db$Timestamp, kern, theta = hp[1:2], sigma = hp[[3]]) + new_cov
+  inv = tryCatch(solve(cov), error = function(e){MASS::ginv(cov)})
+  return(-dmvnorm(db$Output, mean, inv , log = T))
+}
+
 logL_GP_mod = function(hp, db, mean, kern, new_cov)
 { ## hp : vector or list of parameters of the kernel with format (a, b, sigma)
   ## db : tibble containing values we want to compute logL on. Required columns : Timestamp, Output
@@ -181,7 +191,10 @@ logL_GP_mod = function(hp, db, mean, kern, new_cov)
   ## new_cov : posterior covariance matrix of the mean GP (mu_0). Used to compute correction term (cor_term)
   ####
   ##return : value of the modified Gaussian log-likelihood for one GP as it appears in the model
-
+  
+  ## To avoid pathological behaviour of the opm optimization function in rare cases
+  if((hp %>% abs %>% sum) > 20){return(10^10)}
+  
   if(length(mean) == 1){mean = rep(mean, nrow(db))} ## mean is equal for all timestamps
   sigma = ifelse((length(hp) == 3), hp[[3]], 0.1) ## mean GP (mu_0) is noiseless and thus has only 2 hp
 
@@ -189,7 +202,6 @@ logL_GP_mod = function(hp, db, mean, kern, new_cov)
   
   LL_norm = - dmvnorm(db$Output, mean, inv, log = T) ## classic gaussian loglikelihood
   cor_term =  0.5 * (inv * new_cov) %>% sum() ## correction term (0.5 * Trace(inv %*% new_cov))
-  
   return(LL_norm + cor_term)
 }
 
@@ -201,6 +213,9 @@ logL_GP_mod_common_hp = function(hp, db, mean, kern, new_cov)
   ## new_cov : posterior covariance matrix of the mean GP (mu_0). Used to compute correction term (cor_term)
   ####
   ##return : value of the modified Gaussian log-likelihood for the sum of all indiv with same HPs
+  
+  ## To avoid pathological behaviour of the opm optimization function in rare cases
+  if((hp %>% abs %>% sum) > 20){return(10^10)}
   
   sigma = ifelse((length(hp) == 3), hp[[3]], 0.1) ## mean GP is noiseless (0.1 is for computational issues) has only 2 hp
 
@@ -268,6 +283,34 @@ deriv_hp2 = function(mat, theta)
   return( exp(theta[[1]]) * grad * exp(- grad) )
 }
 
+gr_GP = function(hp, db, mean, kern, new_cov)
+{ 
+  y = db$Output
+  t = db$Timestamp
+  
+  sigma = ifelse((length(hp) == 3), hp[[3]], 0.1)
+  cov = kern_to_cov(t, kern, theta = hp[1:2], sigma) + new_cov
+  inv = tryCatch(solve(cov), error = function(e){MASS::ginv(cov)})
+  prod_inv = inv %*% (y - mean) 
+  cste_term = prod_inv %*% t(prod_inv) - inv
+  
+  g_1 = 1/2 * (cste_term %*% kern_to_cov(t, deriv_hp1, theta = hp[1:2], sigma = 0)) %>%  diag() %>% sum()
+  if(length(t) == 1)
+  { ## Second hp has a 0 diagonal, and dist() return an error for only one observation 
+    g_2 = 0
+  }
+  else
+  {
+    g_2 = 1/2 * (cste_term %*% as.matrix(deriv_hp2(dist(t)^2, theta = hp[1:2]) ))  %>%  diag() %>% sum()
+  }
+  if(length(hp) == 3)
+  {
+    g_3 = hp[[3]] * (cste_term %>% diag() %>% sum() )
+    (- c(g_1, g_2, g_3)) %>% return()
+  }
+  else (- c(g_1, g_2)) %>% return()
+}
+
 gr_GP_mod = function(hp, db, mean, kern, new_cov)
 { 
   y = db$Output
@@ -280,7 +323,14 @@ gr_GP_mod = function(hp, db, mean, kern, new_cov)
   
   
   g_1 = 1/2 * (cste_term %*% kern_to_cov(t, deriv_hp1, theta = hp[1:2], sigma = 0)) %>%  diag() %>% sum()
-  g_2 = 1/2 * (cste_term %*% as.matrix(deriv_hp2(dist(t)^2, theta = hp[1:2]) ))  %>%  diag() %>% sum()
+  if(length(t) == 1)
+  { ## Second hp has a 0 diagonal, and dist() return an error for only one observation 
+    g_2 = 0
+  }
+  else
+  {
+    g_2 = 1/2 * (cste_term %*% as.matrix(deriv_hp2(dist(t)^2, theta = hp[1:2]) ))  %>%  diag() %>% sum()
+  }
   
   if(length(hp) == 3)
   {
@@ -313,7 +363,14 @@ gr_GP_mod_common_hp = function(hp, db, mean, kern, new_cov)
                 ( new_cov[input_i,input_i] %*% inv - diag(1, length(t_i)) )
     
     g_1 = g_1 + 1/2 * (cste_term %*% kern_to_cov(t_i, deriv_hp1, theta = hp[1:2], sigma = 0)) %>%  diag() %>% sum()
-    g_2 = g_2 + 1/2 * (cste_term %*% as.matrix(deriv_hp2(dist(t_i)^2, theta = hp[1:2]) )) %>%  diag() %>% sum()
+    if(length(t_i) == 1)
+    { ## Second hp has a 0 diagonal, and dist() return an error for only one observation 
+      g_2 = g_2 + 0
+    }
+    else
+    {
+      g_2 = g_2 + 1/2 * (cste_term %*% as.matrix(deriv_hp2(dist(t_i)^2, theta = hp[1:2]) ))  %>%  diag() %>% sum()
+    }
     
     t_i_old = t_i
     if(length(hp) == 3)
@@ -338,8 +395,8 @@ e_step = function(db, m_0, kern_0, kern_i, hp)
   value_i = base::split(db$Output, list(db$ID))
 
   new_inv = update_inv(prior_inv = inv_0, list_inv_i = inv_i)
-  #new_cov = tryCatch(solve(new_inv), error = function(e){MASS::ginv(new_inv)}) ## fast or slow matrix inversion if singular
-  new_cov = solve(new_inv)
+  new_cov = tryCatch(solve(new_inv), error = function(e){MASS::ginv(new_inv)}) ## fast or slow matrix inversion if singular
+  #new_cov = solve(new_inv)
   
   weighted_mean = update_mean(prior_mean = m_0, prior_inv = inv_0, list_inv_i = inv_i, list_value_i = value_i)
   new_mean = new_cov %*% weighted_mean %>% as.vector()
