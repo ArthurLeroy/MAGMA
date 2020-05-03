@@ -198,7 +198,7 @@ plot_gp = function(pred_gp, data = NULL, data_train = NULL, mean = NULL, mean_CI
   return(gg)
 }
 
-plot_db = function(db = db_train)
+plot_db = function(db)
 { ## Visualize smoothed raw data. Format : ID, Timestamp, Output
   ggplot(db) + geom_smooth(aes(Timestamp, Output, color = ID)) + geom_point(aes(Timestamp, Output, color = ID))
 }
@@ -343,12 +343,14 @@ m_0 = 0
 ##### Testing codes ############
 
 ## Testing the full_algo function
-# bla = training(db_train, 0, ini_hp, kernel_mu, kernel, common_hp = F)
+# bla = training(db_train, 0, ini_hp, kernel_mu, kernel, common_hp = T)
 # list_hp_test = bla$hp[c('theta_0','theta_i')]
 # blab = full_algo(db_train, db_obs[1:5,], seq(9, 20, 0.02), kernel, common_hp = F, plot = T, prior_mean = 0,
 #                  kern_0 = kernel_mu, list_hp = list_hp_test, mu = NULL, ini_hp = ini_hp, hp_new_i = NULL)
 
 #plot_gp(blab$Prediction, data = db_obs)
+
+# bla_post = posterior_mu(db_train, db_obs, db_obs$Timestamp, 0, kernel_mu, kernel, list_hp_test)
 
 # hp_one_gp = list('theta' = c(5,2), 'sigma' = 0.2)
 # fu = pred_gp(db_obs[3:7,], seq(10, 20, 0.05), mean_mu = 0 , cov_mu = NULL, kernel,

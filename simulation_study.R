@@ -41,6 +41,18 @@ pred_gpfda = function(model, new_db, timestamps)
   tibble('Timestamp' = b1$predtime, 'Mean' = as.vector(b1$ypred.mean), 'Var' = as.vector(b1$ypred.sd)^2) %>% return()
 }
 
+mean_gpfda =  function(model, timestamps)
+{
+  a1 = model
+  tfx = timestamps %>% as.matrix
+  time_new = timestamps
+  
+  b1<-gpfrpred(a1, TestData= tfx, NewTime=time_new, lReg = 1, fReg=NULL,
+               gpReg= NULL)
+  
+  tibble('Timestamp' = b1$predtime, 'Mean' = as.vector(b1$ypred.mean), 'Var' = as.vector(b1$ypred.sd)^2) %>% return()
+}  
+
 ##### SIMULATION FUNCTIONS #####
 simu_indiv = function(ID, t, mean, kern, a, b, sigma)
 { # ID : identification of the individual
@@ -192,6 +204,7 @@ eval_methods = function(db_results, db_test)
   eval_one_gp = tibble('MSE' = loss(pred_one_gp, db_test) %>% MSE(),
                      'Ratio_IC' = ratio_IC(db_test, pred_one_gp - 1.96 * sd_one_gp, pred_one_gp + 1.96 * sd_one_gp),
                      'Time_train' = 0, 'Time_pred' = db_results$Time_pred_one_gp)
+  
   eval_gpfda = tibble('MSE' = loss(pred_gpfda, db_test) %>% MSE(),
                     'Ratio_IC' = ratio_IC(db_test, pred_gpfda - 1.96 * sd_gpfda, pred_gpfda + 1.96 * sd_gpfda),
                     'Time_train' = db_results$Time_train_gpfda, 'Time_pred' = db_results$Time_pred_gpfda)
@@ -352,8 +365,8 @@ eval_mu = function(db, prior_mean, ini_hp, kern_0, kern_i, diff_M = T, common_ti
 {
   train_loop = loop_training(db, prior_mean, ini_hp, kern_0, kern_i, diff_M, common_times, common_hp)
   ## Set IDs as characters in the database
-  db_$ID = db_loop$ID %>% as.character 
-  db_$ID_dataset = db_loop$ID_dataset %>% as.character
+  db$ID = db$ID %>% as.character 
+  db$ID_dataset = db$ID_dataset %>% as.character
 
   floop = function(i)
   { 
@@ -362,30 +375,33 @@ eval_mu = function(db, prior_mean, ini_hp, kern_0, kern_i, diff_M = T, common_ti
     list_hp = model_algo$hp
     model_gpfda = train_M[[i]]$gpfda
     
+    browser()
     ## Get the corresponding database
     db_i = db_M %>% filter(ID_dataset == i)
     db_train_i = db_i %>% filter(ID %notin% c(0,1))
-    ## Select the true value of the mean process to evaluate predictions on 
-    db_pred_mu = db_i %>% filter(ID == 0)
+    db_pred_i = db_i %>% filter(ID == 1)
     ## Get timestamps to predict on
-    t_pred = db_pred_mu %>% pull(Timestamp)
+    t_pred = db_train_i$Timestamp %>% unique()
+    ## Select the true value of the mean process to evaluate predictions on 
+    db_pred_mu = db_i %>% filter(ID == 0) %>% filter(Timestamp %in% t_pred)
     
     t1 = Sys.time()
     ## Estimation of the posterior mean process p(mu|data) for our algo
-    res_algo = full_algo(db_train_i, db_obs_i, t_i_pred, kern_i, common_hp, plot = F, prior_mean, kern_0,
-                         list_hp, mu = NULL, ini_hp, hp_new_i = NULL)$Prediction
+    res_algo = posterior_mu(db_train_i, db_pred_i, t_pred, prior_mean, kern_0, kern_i, list_hp)
     t2 = Sys.time()
-    ## ## Estimation of the mean process for GPFDA (deterministic function)
-    if(common_times){res_gpfda = mean_gpfda(model_gpfda, t_i_pred)}
-    else{res_gpfda =  tibble('Timestamp' = t_i_pred, 'Mean' = NA ,   'Var' = NA)}
+    ## No estimation of the mean process with classic GP
+    res_one_gp =  tibble('Timestamp' = t_pred, 'Mean' = NA ,   'Var' = NA)
     t3 = Sys.time()
-    
-    
+    ## Estimation of the mean process for GPFDA (deterministic function)
+    if(common_times){res_gpfda = mean_gpfda(model_gpfda, t_pred)}
+    else{res_gpfda =  tibble('Timestamp' = t_pred, 'Mean' = NA ,   'Var' = NA)}
+    t4 = Sys.time()
+
     ### Get MSE, RATIO IC95 and computing times on testing points for all methods 
-    list('algo' = res_algo, 'Time_train_algo' = model_algo$Time_train, 'Time_pred_algo' = difftime(t2, t1, units = "secs"),
+    list('algo' = res_algo$pred_GP, 'Time_train_algo' = model_algo$Time_train, 'Time_pred_algo' = difftime(t2, t1, units = "secs"),
          'one_gp' = res_one_gp, 'Time_pred_one_gp' =  difftime(t3, t2, units = "secs"),
          'gpfda' = res_gpfda, 'Time_train_gpfda' = model_gpfda$Time_train, 'Time_pred_gpfda' =  difftime(t4, t3, units = "secs")) %>%
-      eval_methods(db_pred_i %>% pull(Output)) %>%
+      eval_methods(db_pred_mu %>% pull(Output)) %>%
       return()
   }
   
@@ -393,11 +409,11 @@ eval_mu = function(db, prior_mean, ini_hp, kern_0, kern_i, diff_M = T, common_ti
   {
     list_eval = tibble()
     ## Removing data with only 1 individual (= the testing individual) or 2 indiv (gpfda doesn't run)
-    list_value_M = unique(db_loop$nb_M) %>% subset(. %notin% c(1,2))
+    list_value_M = unique(db$nb_M) %>% subset(. %notin% c(1,2))
     ## Loop over the different values of M (optional)
     for(j in list_value_M)
     { 
-      db_M = db_loop %>% filter(nb_M == j)
+      db_M = db %>% filter(nb_M == j)
       train_M = train_loop[[paste0('M=', j)]]
       eval_M = unique(db_M$ID_dataset) %>% as.character() %>% sapply(floop, simplify = FALSE, USE.NAMES = TRUE)
       list_eval = list_eval %>% rbind(do.call('rbind', eval_M) %>% 
@@ -407,7 +423,7 @@ eval_mu = function(db, prior_mean, ini_hp, kern_0, kern_i, diff_M = T, common_ti
   }
   else
   {
-    db_M = db_loop
+    db_M = db
     train_M = train_loop
     list_eval = db_M$ID_dataset %>% unique() %>% lapply(floop)
     do.call('rbind', list_eval) %>% 
@@ -475,6 +491,17 @@ res_TT = simu_var_N(tableTT, nb_obs_max = 20, nb_test = 10, prior_mean = 0,
                         ini_hp = list('theta_0' = c(1,1), 'theta_i' = c(1, 1, 0.2)), 
                         kern_0 = kernel_mu, kern_i = kernel, common_times = T, common_hp = T)
 
+res_mu_TT = eval_mu(tableTT, prior_mean = 0,
+                    ini_hp = list('theta_0' = c(1,1), 'theta_i' = c(1, 1, 0.2)), 
+                    kern_0 = kernel_mu, kern_i = kernel, diff_M = F, common_times = T, common_hp = T)
+
+res_mu_TF = eval_mu(tableTF%>% filter(ID_dataset == 7) , prior_mean = 0,
+                    ini_hp = list('theta_0' = c(1,1), 'theta_i' = c(1, 1, 0.2)), 
+                    kern_0 = kernel_mu, kern_i = kernel, diff_M = F, common_times = T, common_hp = F)
+
+
+write.csv2(res_mu_TT, "Simulations/Results/res_mu_rep_100_M_20_N_30_time_TRUE_hp_TRUE.csv")
+
 res_TF = simu_var_N(tableTF, nb_obs_max = 20, nb_test = 10, prior_mean = 0,
                    ini_hp = list('theta_0' = c(1,1), 'theta_i' = c(1, 1, 0.2)), 
                    kern_0 = kernel_mu, kern_i = kernel, common_times = T, common_hp = F)
@@ -487,7 +514,7 @@ res_FF = simu_var_N(tableFF, nb_obs_max = 20, nb_test = 10, prior_mean = 0,
                    ini_hp = list('theta_0' = c(1,1), 'theta_i' = c(1, 1, 0.2)), 
                    kern_0 = kernel_mu, kern_i = kernel, common_times = F, common_hp = F)
 
-res_TF %>%  group_by(Method) %>%
+res_mu_TT %>%  group_by(Method) %>%
   summarise_all(list('Mean' = mean, 'SD' = sd), na.rm = TRUE) %>% return()
 
 
