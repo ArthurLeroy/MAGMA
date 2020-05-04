@@ -214,7 +214,7 @@ eval_methods = function(db_results, db_test)
   rbind(eval_algo, eval_one_gp, eval_gpfda) %>% mutate(Method = c('Algo', 'One GP', 'GPFDA')) %>% return()
 }
 
-##### FULL SIMULATION FUNCTION #####
+##### TRAINING AND PRED FUNCTIONS #####
 
 loop_training = function(db_loop, prior_mean, ini_hp, kern_0, kern_i, diff_M, common_times, common_hp)
 {  
@@ -222,6 +222,7 @@ loop_training = function(db_loop, prior_mean, ini_hp, kern_0, kern_i, diff_M, co
   floop = function(i)
   {
     print(paste0('Dataset n°', i))
+    if(diff_M){print(paste0('Nb M = ', db_M$nb_M[[1]]))}
     ## Select the i-th dataset and remove mean process and testing individual (ID = 0 and 1)
     db_train = db_M %>% filter(ID_dataset == i) %>% filter(!(ID %in% c(0,1))) %>%
                            dplyr::select('ID', 'Timestamp', 'Output')
@@ -236,11 +237,12 @@ loop_training = function(db_loop, prior_mean, ini_hp, kern_0, kern_i, diff_M, co
     ## Removing data with only 1 individual (= the testing individual) or 2 indiv (gpfda doesn't run)
     list_value_M = unique(db_loop$nb_M) %>% subset(. %notin% c(1,2))
     ## Loop over the different values of M (optional)
-    nb_core = c(length(list_value_M), 8) %>% min()
-    myCluster <- makeCluster(nb_core, type = "FORK")
-    registerDoParallel(myCluster)
+    # nb_core = c(length(list_value_M), 8) %>% min()
+    # myCluster <- makeCluster(nb_core, type = "FORK", outfile="")
+    # registerDoParallel(myCluster)
     
-    list_train = foreach(j = list_value_M, .final = function(j) setNames(j, paste0('M=', list_value_M))) %dopar%
+    list_train = foreach(j = list_value_M, .final = function(j) setNames(j, paste0('M=', list_value_M)),
+                         .packages='tidyverse') %do%
     {
        db_M = db_loop %>% filter(nb_M == j)
        
@@ -248,7 +250,7 @@ loop_training = function(db_loop, prior_mean, ini_hp, kern_0, kern_i, diff_M, co
        sapply(floop, simplify = FALSE, USE.NAMES = TRUE) %>% 
        return()
     }
-    stopCluster(myCluster)
+    #stopCluster(myCluster)
     ## !!! DON'T FORGET TO STOP THE USE OF THE CLUSTERS !!!
   }
   else
@@ -541,9 +543,9 @@ tableM_20to200_FF$ID = as.character(tableM_20to200_FF$ID)
 tableM_20to200_FF$ID_dataset = as.character(tableM_20to200_FF$ID_dataset)
 
 ##### TRAIN ALL MODEL ####
-
+db_to_train = tableM_20to200_TT %>% filter(ID_dataset %in% c(50,51)) 
 t1 = Sys.time()
-train_loop = loop_training(tableM_0to20_TT, prior_mean = 0, ini_hp = list('theta_0' = c(1,1), 'theta_i' = c(1, 1, 0.2)),
+train_loop = loop_training(db_to_train, prior_mean = 0, ini_hp = list('theta_0' = c(1,1), 'theta_i' = c(1, 1, 0.2)),
                            kern_0 = kernel_mu, kern_i = kernel, diff_M = T, common_times = T, common_hp = T)
 t2 = Sys.time()
 train_loop[['Time_train_tot']] = t2 - t1
