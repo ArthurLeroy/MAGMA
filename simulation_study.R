@@ -2,8 +2,8 @@
 source('Algo_multitask_GP.R')
 
 library(GPFDA)
-library(foreach)
-library(doParallel)
+# library(foreach)
+# library(doParallel)
 
 ##### COMPETING ALGO IN SIMU ####
 train_gpfda = function(db)
@@ -219,10 +219,13 @@ eval_methods = function(db_results, db_test)
 loop_training = function(db_loop, prior_mean, ini_hp, kern_0, kern_i, diff_M, common_times, common_hp)
 {  
   ## Loop over the different datasets
-  floop = function(i)
+  floop = function(i, M = NULL)
   {
-    print(paste0('Dataset n°', i))
+    
+    if(diff_M){db_M = db_loop %>% filter(nb_M == M)}else{db_M = db_loop}
     if(diff_M){print(paste0('Nb M = ', db_M$nb_M[[1]]))}
+    print(paste0('Dataset n°', i))
+    
     ## Select the i-th dataset and remove mean process and testing individual (ID = 0 and 1)
     db_train = db_M %>% filter(ID_dataset == i) %>% filter(!(ID %in% c(0,1))) %>%
                            dplyr::select('ID', 'Timestamp', 'Output')
@@ -241,21 +244,22 @@ loop_training = function(db_loop, prior_mean, ini_hp, kern_0, kern_i, diff_M, co
     # myCluster <- makeCluster(nb_core, type = "FORK", outfile="")
     # registerDoParallel(myCluster)
     
-    list_train = foreach(j = list_value_M, .final = function(j) setNames(j, paste0('M=', list_value_M)),
-                         .packages='tidyverse') %do%
-    {
-       db_M = db_loop %>% filter(nb_M == j)
-       
-       unique(db_M$ID_dataset) %>% as.character() %>% 
-       sapply(floop, simplify = FALSE, USE.NAMES = TRUE) %>% 
-       return()
-    }
-    #stopCluster(myCluster)
+    # list_train = foreach(j = list_value_M, .final = function(j) setNames(j, paste0('M=', list_value_M)),
+    #                      .packages='tidyverse') %do%
+    # {
+    list_train <- mclapply(list_value_M, function(j) {
+      unique(db_loop$ID_dataset) %>% as.character() %>% 
+      sapply(floop, M = j,  simplify = FALSE, USE.NAMES = TRUE) %>% 
+      return()
+    }, mc.cores= 2)
+    names(list_train) = paste0('M=', list_value_M)
+    
+    # }
+    # stopCluster(myCluster)
     ## !!! DON'T FORGET TO STOP THE USE OF THE CLUSTERS !!!
   }
   else
   {
-    db_M = db_loop
     list_train = unique(db_loop$ID_dataset) %>% as.character() %>% sapply(floop, simplify = FALSE, USE.NAMES = TRUE)
   }
   
@@ -543,7 +547,7 @@ tableM_20to200_FF$ID = as.character(tableM_20to200_FF$ID)
 tableM_20to200_FF$ID_dataset = as.character(tableM_20to200_FF$ID_dataset)
 
 ##### TRAIN ALL MODEL ####
-db_to_train = tableM_20to200_TT %>% filter(ID_dataset %in% c(50,51)) 
+db_to_train = tableM_20to200_TT %>% filter(ID_dataset %in% c(50)) 
 t1 = Sys.time()
 train_loop = loop_training(db_to_train, prior_mean = 0, ini_hp = list('theta_0' = c(1,1), 'theta_i' = c(1, 1, 0.2)),
                            kern_0 = kernel_mu, kern_i = kernel, diff_M = T, common_times = T, common_hp = T)
