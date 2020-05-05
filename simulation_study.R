@@ -508,14 +508,14 @@ tableM_20to200_FF$ID = as.character(tableM_20to200_FF$ID)
 tableM_20to200_FF$ID_dataset = as.character(tableM_20to200_FF$ID_dataset)
 
 ##### TRAIN ALL MODEL ####
-# db_to_train = tableTF
-# t1 = Sys.time()
-# train_loop = loop_training(db_to_train, prior_mean = 0, ini_hp = list('theta_0' = c(1,1), 'theta_i' = c(1, 1, 0.2)),
-#                            kern_0 = kernel_mu, kern_i = kernel, diff_M = F, common_times = T, common_hp = F)
-# t2 = Sys.time()
-# train_loop[['Time_train_tot']] = t2 - t1
-# 
-# saveRDS(train_loop, 'Simulations/Training/train_TF.rds')
+db_to_train = tableM_20to200_TF %>% filter(nb_M != 21)
+t1 = Sys.time()
+train_loop = loop_training(db_to_train, prior_mean = 0, ini_hp = list('theta_0' = c(1,1), 'theta_i' = c(1, 1, 0.2)),
+                           kern_0 = kernel_mu, kern_i = kernel, diff_M = T, common_times = T, common_hp = T)
+t2 = Sys.time()
+train_loop[['Time_train_tot']] = t2 - t1
+
+saveRDS(train_loop, 'Simulations/Training/train_M_0to20_TT.rds')
 
 ##### RESULTS : varying values of N* #####
 # train_loop = readRDS('Simulations/Training/train_TF.rds')
