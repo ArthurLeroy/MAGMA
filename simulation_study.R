@@ -258,7 +258,7 @@ loop_training = function(db_loop, prior_mean, ini_hp, kern_0, kern_i, diff_M, co
 
 loop_pred = function(db_loop, train_loop, nb_obs, nb_test, diff_M)
 {
-  db$ID = db$ID %>% as.character
+  db_loop$ID = db_loop$ID %>% as.character
   db_loop$ID = db_loop$ID %>% as.character
   ## Get the settings used for training
   prior_mean = train_loop$prior_mean
@@ -270,7 +270,7 @@ loop_pred = function(db_loop, train_loop, nb_obs, nb_test, diff_M)
   common_hp = train_loop$common_hp
 
   floop = function(i)
-  { 
+  { if(diff_M){print(paste('M =',M, ', i =',i))}else{print(paste('i =' ,i))}
     ## Get the trained model for GPFDA and our algo
     model_algo = train_M[[i]]$algo
     list_hp = model_algo$hp
@@ -344,8 +344,9 @@ simu_var_N = function(db, train_loop, nb_obs_max, nb_test, plot = T)
   
   floop = function(i)
   {
-    loop_pred = loop_pred(db, loop_train, nb_obs = i, nb_test) %>% mutate('N' = i) %>% 
-      return()
+    print(paste('N =', i))
+    loop_pred = loop_pred(db, train_loop, nb_obs = i, nb_test) %>% mutate('N' = i) %>% 
+    return()
   }
   res_n = lapply(1:nb_obs_max, floop) %>% do.call('rbind', .)
   
@@ -373,7 +374,8 @@ eval_mu = function(db, train_loop, M)
   db_M = db %>% filter(nb_M == M)
 
   floop = function(i)
-  { 
+  {browser()
+    print(paste('M =',M, ', i =',i))
     ## Get the trained model for GPFDA and our algo
     model_algo = train_M[[i]]$algo
     list_hp = model_algo$hp
@@ -422,7 +424,7 @@ eval_mu_M = function(db, train_loop)
   }
   ## Removing data with only 1 individual (= the testing individual) or 2 indiv (gpfda doesn't run)
   M_values = db$nb_M %>% unique %>% subset(. %notin% c(1,2))
-  eval_M = M_values %>% sapply(floop)
+  eval_M = M_values %>% lapply(floop)
   do.call('rbind', eval_M) %>% return()
 }
 
@@ -508,7 +510,7 @@ tableM_20to200_FF$ID = as.character(tableM_20to200_FF$ID)
 tableM_20to200_FF$ID_dataset = as.character(tableM_20to200_FF$ID_dataset)
 
 ##### TRAIN ALL MODEL ####
-db_to_train = tableM_20to200_TF %>% filter(nb_M != 21)
+db_to_train = tableM_0to20_TT
 t1 = Sys.time()
 train_loop = loop_training(db_to_train, prior_mean = 0, ini_hp = list('theta_0' = c(1,1), 'theta_i' = c(1, 1, 0.2)),
                            kern_0 = kernel_mu, kern_i = kernel, diff_M = T, common_times = T, common_hp = T)
@@ -518,15 +520,15 @@ train_loop[['Time_train_tot']] = t2 - t1
 saveRDS(train_loop, 'Simulations/Training/train_M_0to20_TT.rds')
 
 ##### RESULTS : varying values of N* #####
-# train_loop = readRDS('Simulations/Training/train_TF.rds')
+# train_loop = readRDS('Simulations/Training/train_TT.rds')
 # tab = tableTT
 # 
-# res = simu_var_N(tab, train_loop, nb_obs_max = 20, nb_test = 10)
+# res = simu_var_N(tab, train_loop, nb_obs_max = 20, nb_test = 2)
 # 
 # write.csv2(res, "Simulations/Results/res_mu_rep_100_M_20_N_30_time_TRUE_hp_TRUE.csv")
 # 
 # res %>% group_by(Method) %>% summarise_all(list('Mean' = mean, 'SD' = sd), na.rm = TRUE)
-# ggplot(res) + geom_boxplot(aes(x = as.factor(M), y = MSE, fill = Method)) + scale_y_continuous(limits = c(0,100))
+# ggplot(res) + geom_boxplot(aes(x = as.factor(N), y = MSE, fill = Method)) + scale_y_continuous(limits = c(0,100))
 
 ##### RESULTS : varying values of M ####
 
@@ -556,15 +558,14 @@ saveRDS(train_loop, 'Simulations/Training/train_M_0to20_TT.rds')
 
 ##### RESULTS : evaluation of mu_0 with varying M ####
 
-# train = readRDS('Simulations/Training/train_M_0to20_TT.rds')
-# tab_mu_M = tableM_20to200_TT
-#
-# res_mu_M = eval_mu_M(tab_mu_M, train)
-#write.csv2(res_mu_M, "Simulations/Results/res_mu_rep_100_M_0to20_N_30_time_TRUE_hp_TRUE.csv")
-#
-# result %>% group_by(Method) %>% summarise_all(list('Mean' = mean, 'SD' = sd), na.rm = TRUE)
-# ggplot(result) + geom_boxplot(aes(x = as.factor(M), y = MSE, fill = Method)) + scale_y_continuous(limits = c(0,100))
+train = readRDS('Simulations/Training/train_M_0to20_TT.rds')
+tab_mu_M = tableM_0to20_TT
 
+res_mu_M = eval_mu_M(tab_mu_M, train)
+write.csv2(res_mu_M, "Simulations/Results/res_mu_rep_100_M_0to20_N_30_time_TRUE_hp_TRUE.csv")
+
+res_mu_M %>% group_by(Method) %>% summarise_all(list('Mean' = mean, 'SD' = sd), na.rm = TRUE)
+ggplot(res_mu_M) + geom_boxplot(aes(x = as.factor(M), y = MSE, fill = Method)) + scale_y_continuous(limits = c(0,100))
 
 
 ##### PLOT OF RESULTS #### 
@@ -606,7 +607,7 @@ saveRDS(train_loop, 'Simulations/Training/train_M_0to20_TT.rds')
 #                   int_test = c(2,9))
 
 
-###### TEST GPFDA ####
+##### TEST GPFDA ####
 # M = 20
 # N = 11
 # t = matrix(0, ncol = N, nrow = M)
