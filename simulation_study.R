@@ -450,7 +450,7 @@ eval_mu_M = function(db, train_loop)
 #     datasets_multi_N(rep = 100, M = 21, N = 30, G = seq(0, 10, 0.05), common_times = i,
 #                      common_hp = j, kern_0 = kernel_mu, kern_i = kernel, int_mu_a = c(0,5), int_mu_b = c(0,2),
 #                      int_i_a = c(0,5), int_i_b = c(0,2), int_i_sigma = c(0,2)) %>%
-#     write_csv2(paste0('Simulations/Data/db_rep_100_M_20_N_30_time_', i, '_hp_', j,'.csv'))
+#     write_csv2(paste0('Simulations/Data/db_rep_100_M_20_N_30_time_', i, '_hp_', j,'.csv'), row.names=FALSE)
 #   }
 # }
 
@@ -462,7 +462,7 @@ eval_mu_M = function(db, train_loop)
 #     datasets_multi_M(rep = 100, vec_M = c(21, 51, 101, 151, 201), N = 30, G = seq(0, 10, 0.05), common_times = i,
 #                      common_hp = j, kern_0 = kernel_mu, kern_i = kernel, int_mu_a = c(0,5), int_mu_b = c(0,2),
 #                      int_i_a = c(0,5), int_i_b = c(0,2), int_i_sigma = c(0,2)) %>%
-#       write_csv2(paste0('Simulations/Data/db_rep_100_M_20to200_N_30_time_', i, '_hp_', j,'.csv'))
+#       write_csv2(paste0('Simulations/Data/db_rep_100_M_20to200_N_30_time_', i, '_hp_', j,'.csv'), row.names=FALSE)
 #   }
 # }
 
@@ -525,7 +525,7 @@ saveRDS(train_loop, 'Simulations/Training/train_M_0to20_TT.rds')
 # 
 # res = simu_var_N(tab, train_loop, nb_obs_max = 20, nb_test = 2)
 # 
-# write.csv2(res, "Simulations/Results/res_mu_rep_100_M_20_N_30_time_TRUE_hp_TRUE.csv")
+# write.csv2(res, "Simulations/Results/res_mu_rep_100_M_20_N_30_time_TRUE_hp_TRUE.csv", row.names=FALSE)
 # 
 # res %>% group_by(Method) %>% summarise_all(list('Mean' = mean, 'SD' = sd), na.rm = TRUE)
 # ggplot(res) + geom_boxplot(aes(x = as.factor(N), y = MSE, fill = Method)) + scale_y_continuous(limits = c(0,100))
@@ -537,7 +537,7 @@ saveRDS(train_loop, 'Simulations/Training/train_M_0to20_TT.rds')
 
 # res_M = loop_pred(tab_M, train_loop, nb_obs = 20, nb_test = 10, diff_M = T)
 
-#write.csv2(res_M, "Simulations/Results/res_mu_rep_100_M_20_N_30_time_TRUE_hp_TRUE.csv")
+#write.csv2(res_M, "Simulations/Results/res_mu_rep_100_M_20_N_30_time_TRUE_hp_TRUE.csv", row.names=FALSE)
 
 # res_M %>% group_by(Method) %>% summarise_all(list('Mean' = mean, 'SD' = sd), na.rm = TRUE)
 # ggplot(res_M) + geom_boxplot(aes(x = as.factor(M), y = MSE, fill = Method)) + scale_y_continuous(limits = c(0,100))
@@ -550,7 +550,7 @@ saveRDS(train_loop, 'Simulations/Training/train_M_0to20_TT.rds')
 
 # res_mu = eval_mu(tab_mu, train_loop)
 
-# write.csv2(res_mu, "Simulations/Results/res_mu_rep_100_M_20_N_30_time_TRUE_hp_TRUE.csv")
+# write.csv2(res_mu, "Simulations/Results/res_mu_rep_100_M_20_N_30_time_TRUE_hp_TRUE.csv", row.names=FALSE)
 
 # res_mu %>% group_by(Method) %>% summarise_all(list('Mean' = mean, 'SD' = sd), na.rm = TRUE)
 # ggplot(res_mu) + geom_boxplot(aes(x = as.factor(M), y = MSE, fill = Method)) + scale_y_continuous(limits = c(0,100))
@@ -558,19 +558,24 @@ saveRDS(train_loop, 'Simulations/Training/train_M_0to20_TT.rds')
 
 ##### RESULTS : evaluation of mu_0 with varying M ####
 
-train = readRDS('Simulations/Training/train_M_0to20_TT.rds')
-tab_mu_M = tableM_0to20_TT
-
-res_mu_M = eval_mu_M(tab_mu_M, train)
-write.csv2(res_mu_M, "Simulations/Results/res_mu_rep_100_M_0to20_N_30_time_TRUE_hp_TRUE.csv")
-
-res_mu_M %>% group_by(Method) %>% summarise_all(list('Mean' = mean, 'SD' = sd), na.rm = TRUE)
-ggplot(res_mu_M) + geom_boxplot(aes(x = as.factor(M), y = MSE, fill = Method)) + scale_y_continuous(limits = c(0,100))
+# train = readRDS('Simulations/Training/train_M_0to20_TT.rds')
+# tab_mu_M = tableM_0to20_TT
+# 
+# res_mu_M = eval_mu_M(tab_mu_M, train)
+# write.csv2(res_mu_M, "Simulations/Results/res_mu_rep_100_M_0to20_N_30_time_TRUE_hp_TRUE.csv", row.names=FALSE)
+# 
+# res_mu_M %>% group_by(Method) %>% summarise_all(list('Mean' = mean, 'SD' = sd), na.rm = TRUE)
+# ggplot(res_mu_M) + geom_boxplot(aes(x = as.factor(M), y = MSE, fill = Method)) + scale_y_continuous(limits = c(0,100))
 
 
 ##### PLOT OF RESULTS #### 
-# ggplot(test_res_n) + geom_boxplot(aes(x = as.factor(N), y = MSE, fill = Method), outlier.shape = NA)
-# ggplot(res_TF) + geom_boxplot(aes(x = as.factor(N), y = MSE, fill = Method)) + scale_y_continuous(limits = c(0,100))
+
+res_plot = read_csv2("Simulations/Results/res_mu_rep_100_M_0to20_N_30_time_TRUE_hp_TRUE.csv")
+res_plot %>% select(-X1) %>% summarise_all(list('Mean' = mean, 'SD' = sd), na.rm = TRUE)
+fu = res_plot %>% select(-X1) %>% group_by(Method, M) %>% summarise_all(list('Mean' = mean, 'SD' = sd), na.rm = TRUE)
+
+# ggplot(res_plot) + geom_boxplot(aes(x = as.factor(N), y = MSE, fill = Method))
+ggplot(res_plot) + geom_boxplot(aes(x = as.factor(M), y = MSE, fill = Method)) + scale_y_continuous(limits = c(0,15))
 
 ##### TESTS SIMU ####
 # bla_db = datasets_multi_N(rep = 10, M = 21, N = 30, G = seq(0, 10, 0.05), common_times = T,
