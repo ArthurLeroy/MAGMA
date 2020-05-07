@@ -13,7 +13,7 @@ library(png)
 #setwd(dir = 'C:/Users/user/CloudStation/Maths/These/Processus Gaussiens/Code R/Algo multitask GP')
 source('Computing_functions.R')
 
-################ TRAINING FUNCTIONS ################## 
+##### TRAINING FUNCTIONS ################## 
 training = function(db, prior_mean, ini_hp, kern_0, kern_i, common_hp = T)
 { ## db : database with all individuals in training set. Column required : 'ID', Timestamp', 'Output'
   ## prior_mean : prior mean parameter of the mean GP (mu_0)
@@ -32,12 +32,12 @@ training = function(db, prior_mean, ini_hp, kern_0, kern_i, common_hp = T)
   list_plot = list()
   t1 = Sys.time()
   for(i in 1:n_loop_max)
-  { browser()
+  { #browser()
     print(i)
     ## E-Step
     param = e_step(db, prior_mean, kern_0, kern_i, hp)   
     
-    ##list_plot[[i]] = param$pred_GP %>% plot_gp(data_train = db)
+    list_plot[[i]] = param$pred_GP %>% plot_gp(data_train = db)
     ## Return list_plot if you want monitoring graphs of the mean process' learning
     
     ## M-Step
@@ -56,8 +56,9 @@ training = function(db, prior_mean, ini_hp, kern_0, kern_i, common_hp = T)
     eps = (logL_new_hp - new_logLL_monitoring) / abs(logL_new_hp)
     c('eps =', eps) %>% print()
     
-    if(eps > 0 & eps < 1e-3)
+    if(eps < 1e-3)
     {
+      if(eps > 0){hp = new_hp}
       cv = 'TRUE'
       break
     }
@@ -65,11 +66,13 @@ training = function(db, prior_mean, ini_hp, kern_0, kern_i, common_hp = T)
     logLL_monitoring = new_logLL_monitoring
   }
   t2 = Sys.time()
-  list('hp' = new_hp, 'convergence' = cv, 'param' = param, 'Time_train' =  difftime(t2, t1, units = "secs")) %>% 
+  list('hp' = hp, 'convergence' = cv, 'param' = param,
+       'Time_train' =  difftime(t2, t1, units = "secs"), 
+       'plot' = list_plot) %>% 
   return()
 }
 
-train_new_gp = function(db, mean_mu, cov_mu, ini_hp, kern_i)
+train_new_gp = function(db, mean_mu, cov_mu, ini_hp_i, kern_i)
 { 
   if(is.vector(mean_mu)){mean = mean_mu} 
   else {mean = mean_mu %>% filter(Timestamp %in% db$Timestamp) %>% pull(Output) %>% as.vector}
@@ -78,12 +81,12 @@ train_new_gp = function(db, mean_mu, cov_mu, ini_hp, kern_i)
   if(is.matrix(cov_mu)){new_cov = cov_mu[paste0('X', db$Timestamp), paste0('X', db$Timestamp)]}
   else {new_cov = 0}
   
-  new_hp = opm(ini_hp, fn = logL_GP, gr = gr_GP, db = db, mean = mean, kern = kern_i, new_cov = new_cov,
+  new_hp = opm(ini_hp_i, fn = logL_GP, gr = gr_GP, db = db, mean = mean, kern = kern_i, new_cov = new_cov,
                method = "L-BFGS-B", control = list(kkt = FALSE)) 
   list('theta' = new_hp[1:2], 'sigma' = new_hp[3], 'opm' = new_hp) %>% return()
 }
 
-################ PREDICTION FUNCTIONS ################
+##### PREDICTION FUNCTIONS ################
 posterior_mu = function(db, new_db, timestamps, m_0, kern_0, kern_i, hp)
 { ## db : matrix of data columns required ('Timestamp', 'Output')
   ## timestamps : timestamps on which we want a prediction
@@ -92,8 +95,10 @@ posterior_mu = function(db, new_db, timestamps, m_0, kern_0, kern_i, hp)
   ####
   ## return : pamameters of the mean GP at timestamps
   t_pred = timestamps %>% union(unique(db$Timestamp)) %>% union(unique(new_db$Timestamp)) %>% sort()
+  ## Mean GP (mu_0) is noiseless and thus has only 2 hp. We add a penalty on diag for numerical stability
+  pen_diag = sapply(hp$theta_i, function(x) x[[3]]) %>% mean
 
-  inv_0 = kern_to_inv(t_pred, kern_0, hp$theta_0, sigma = 0.01)
+  inv_0 = kern_to_inv(t_pred, kern_0, hp$theta_0, sigma = pen_diag)
   inv_i = kern_to_inv(db, kern_i, hp$theta_i, sigma = 0)
   value_i = base::split(db$Output, list(db$ID))
 
@@ -177,7 +182,7 @@ pred_gp_animate = function(db, timestamps = NULL, mean_mu = 0, cov_mu = NULL,
   return(all_pred)
 }
 
-################ PLOT FUNCTIONS ######################
+##### PLOT FUNCTIONS ######################
 plot_gp = function(pred_gp, data = NULL, data_train = NULL, mean = NULL, mean_CI = F)
 { ## pred_gp : tibble coming out of the pred_gp() function, columns required : 'Timestamp', 'Mean', 'Var'
   ## data : tibble of observational data, columns required : 'Timestamp', 'Output' (Optional)
@@ -253,7 +258,7 @@ plot_animate = function(pred_gp, data = NULL, data_train = NULL, mean = NULL, me
   animate(gg, renderer = gifski_renderer(file)) %>% return()
 }
 
-################ APPLICATION #########################
+##### APPLICATION #########################
 
 full_algo = function(db, new_db, timestamps, kern_i, common_hp = T, plot = T, prior_mean,
                      kern_0 = NULL, list_hp = NULL, mu = NULL, ini_hp = NULL, hp_new_i = NULL)
@@ -296,7 +301,7 @@ full_algo = function(db, new_db, timestamps, kern_i, common_hp = T, plot = T, pr
   return()
 }
 
-############### SIMULATED DATA ######################
+##### SIMULATED DATA ######################
 simu_indiv_test = function(ID, t, kern = kernel_mu, theta, mean, var)
 { ## Return Age and Performance of a simulated individual
   ## nb : Number of timestamps
@@ -317,8 +322,8 @@ simu_indiv_test = function(ID, t, kern = kernel_mu, theta, mean, var)
   return(db)
 }
 
-#set.seed(42)
-M = 10
+set.seed(46)
+M = 2
 N = 10
 t = matrix(0, ncol = N, nrow = M)
 for(i in 1:M){t[i,] = sample(seq(10, 20, 0.05),N, replace = F) %>% sort()}
@@ -336,7 +341,7 @@ for(i in 2:M)
 db_obs = simu_indiv_test(ID = (M+1) %>% as.character(), sample(seq(10, 20, 0.05),N, replace = F) %>% sort(),
                     kernel_mu, theta = c(2,1), mean = 45, var = 0.2)
 
-# ################ INITIALISATION ######################
+##### INITIALISATION ######################
 ini_hp = list('theta_0' = c(1,1), 'theta_i' = c(1, 1, 0.2))
 m_0 = 0
 
