@@ -239,7 +239,7 @@ loop_training = function(db_loop, prior_mean, ini_hp, kern_0, kern_i, diff_M, co
     ## Removing data with only 1 individual (= the testing individual) or 2 indiv (gpfda doesn't run)
     list_value_M = unique(db_loop$nb_M) %>% subset(. %notin% c(1,2))
     ## Parallel computing through mclapply not available in windows
-    nb_core = ifelse(.Platform$OS.type == 'windows', 1, 2)
+    nb_core = ifelse(.Platform$OS.type == 'windows', 1, 1)
     
     ## Parallel computing for different values of M
     list_train <- mclapply(list_value_M, function(j) {
@@ -530,36 +530,37 @@ tableM_20to200_FF$ID = as.character(tableM_20to200_FF$ID)
 tableM_20to200_FF$ID_dataset = as.character(tableM_20to200_FF$ID_dataset)
 
 ##### TRAIN ALL MODEL ####
-db_to_train = tableTT
+db_to_train = tableTF
 t1 = Sys.time()
 train_loop = loop_training(db_to_train, prior_mean = 0, ini_hp = list('theta_0' = c(1,1), 'theta_i' = c(1, 1, 0.2)),
-                           kern_0 = kernel_mu, kern_i = kernel, diff_M = F, common_times = T, common_hp = T)
+                           kern_0 = kernel_mu, kern_i = kernel, diff_M = F, common_times = T, common_hp = F)
 t2 = Sys.time()
 train_loop[['Time_train_tot']] = t2 - t1
 
-#saveRDS(train_loop, 'Simulations/Training/train_M_0to20_TT.rds')
+saveRDS(train_loop, 'Simulations/Training/train_TF.rds')
+
 ##### RESULTS : evaluation of pred  ####
-# train_loop = readRDS('Simulations/Training/train_TT.rds')
-tab_pred = tableTT
-
-res_pred = loop_pred(tab_pred, train_loop, 20, 10, F)
-
-# write.csv2(res_pred, "Simulations/Results/res_mu_rep_100_M_20_N_30_time_TRUE_hp_TRUE.csv", row.names=FALSE)
+# train_loop = readRDS('Simulations/Training/train_FT.rds')
+# tab_pred = tableTT
 # 
- res_pred %>% group_by(Method) %>% summarise_all(list('Mean' = mean, 'SD' = sd), na.rm = TRUE)
- ggplot(res_pred) + geom_boxplot(aes(x = Method, y = MSE, fill = Method)) + scale_y_continuous(limits = c(0,100))
+# res_pred = loop_pred(tab_pred, train_loop, 20, 10, F)
+# 
+# write.csv2(res_pred, "Simulations/Results/res_pred_N20-10_M20_TT.csv", row.names=FALSE)
+# 
+# res_pred %>% group_by(Method) %>% summarise_all(list('Mean' = mean, 'SD' = sd), na.rm = TRUE)
+# ggplot(res_pred) + geom_boxplot(aes(x = Method, y = MSE, fill = Method)) + scale_y_continuous(limits = c(0,100))
 
 
 ##### RESULTS : evaluation of mu_0  ####
 # train_loop = readRDS('Simulations/Training/train_TT.rds')
-tab_mu = tableTT
-
-res_mu = eval_mu(tab_mu, train_loop)
-
-# write.csv2(res_mu, "Simulations/Results/res_mu_rep_100_M_20_N_30_time_TRUE_hp_TRUE.csv", row.names=FALSE)
+# tab_mu = tableTT
 # 
-res_mu %>% group_by(Method) %>% summarise_all(list('Mean' = mean, 'SD' = sd), na.rm = TRUE)
-ggplot(res_mu) + geom_boxplot(aes(x = Method, y = MSE, fill = Method)) #+ scale_y_continuous(limits = c(0,100))
+# res_mu = eval_mu(tab_mu, train_loop)
+# 
+# write.csv2(res_mu, "Simulations/Results/res_mu_N20-10_M20_FT.csv", row.names=FALSE)
+# 
+# res_mu %>% group_by(Method) %>% summarise_all(list('Mean' = mean, 'SD' = sd), na.rm = TRUE)
+# ggplot(res_mu) + geom_boxplot(aes(x = Method, y = MSE, fill = Method)) #+ scale_y_continuous(limits = c(0,100))
 
 
 ##### RESULTS : pred with varying values of N* #####

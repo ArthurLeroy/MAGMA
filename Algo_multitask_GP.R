@@ -27,7 +27,7 @@ training = function(db, prior_mean, ini_hp, kern_0, kern_i, common_hp = T)
   list_ID = unique(db$ID)
   hp = list('theta_0' = ini_hp$theta_0, 
             'theta_i' = ini_hp$theta_i %>% list() %>% rep(length(list_ID))  %>% setNames(nm = list_ID))
-  cv = 'FALSE'
+  cv = FALSE
   logLL_monitoring = - Inf
   list_plot = list()
   t1 = Sys.time()
@@ -39,29 +39,39 @@ training = function(db, prior_mean, ini_hp, kern_0, kern_i, common_hp = T)
     
     list_plot[[i]] = param$pred_GP %>% plot_gp(data_train = db)
     ## Return list_plot if you want monitoring graphs of the mean process' learning
-    
+
     ## M-Step
     new_hp = m_step(db, hp, mean = param$mean, cov = param$cov, kern_0, kern_i, prior_mean, common_hp)
+     
+    ## If something went wrong during the optimization
+    if(new_hp %>% anyNA(recursive = T))
+    {
+      print(paste0('The M-step encountered an error at iteration : ', i))
+      print('Training has stopped and the function returns values from the last valid iteration')
+      break
+    }
   
-    ## Testing the stoping condition
     ## Monitoring of the LL
     new_logLL_monitoring = logL_monitoring(hp, db, kern_i, kern_0, param$mean, param$cov, prior_mean) 
                             # + 0.5 * log(det(param$cov)) for an exact likelihood but constant respectively to HPs
-    c('logLL = ', new_logLL_monitoring) %>% print()
+    paste0('logLL = ', new_logLL_monitoring) %>% print()
     diff_moni = new_logLL_monitoring - logLL_monitoring
     if(diff_moni < - 0.1){warning('Likelihood descreased')}
 
     logL_new_hp = logL_monitoring(new_hp, db, kern_i, kern_0, param$mean, param$cov, prior_mean)
                   # + 0.5 * log(det(param$cov)) for an exact likelihood but constant respectively to HPs
-    eps = (logL_new_hp - new_logLL_monitoring) / abs(logL_new_hp)
-    c('eps =', eps) %>% print()
     
+    ## Testing the stoping condition
+    eps = (logL_new_hp - new_logLL_monitoring) / abs(logL_new_hp)
+    paste0('eps = ', eps) %>% print()
     if(eps < 1e-3)
     {
       if(eps > 0){hp = new_hp}
-      cv = 'TRUE'
+      cv = TRUE
       break
     }
+    
+    ## Update HP values and loglikelihood monitoring 
     hp = new_hp
     logLL_monitoring = new_logLL_monitoring
   }
@@ -81,9 +91,17 @@ train_new_gp = function(db, mean_mu, cov_mu, ini_hp_i, kern_i)
   if(is.matrix(cov_mu)){new_cov = cov_mu[paste0('X', db$Timestamp), paste0('X', db$Timestamp)]}
   else {new_cov = 0}
   
-  new_hp = opm(ini_hp_i, fn = logL_GP, gr = gr_GP, db = db, mean = mean, kern = kern_i, new_cov = new_cov,
+   new_hp = opm(ini_hp_i, fn = logL_GP, gr = gr_GP, db = db, mean = mean, kern = kern_i, new_cov = new_cov,
                method = "L-BFGS-B", control = list(kkt = FALSE)) 
-  list('theta' = new_hp[1:2], 'sigma' = new_hp[3], 'opm' = new_hp) %>% return()
+  
+  ## If something went wrong during the optimization
+  if(new_hp[1, 1:3] %>% anyNA())
+  {
+    print('Training has stopped and the function returns initial values of hyperparameters')
+    new_hp = ini_hp_i
+  }
+
+  list('theta' = new_hp[1:2], 'sigma' = new_hp[[3]]) %>% return()
 }
 
 ##### PREDICTION FUNCTIONS ################

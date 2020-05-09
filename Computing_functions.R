@@ -173,9 +173,6 @@ kern_to_inv = function(x, kern = kernel, theta = c(1, 0.5), sigma = 0.2)
 ##### LOGLIKELIHOOD FUNCTIONS ####
 logL_GP<- function(hp, db, mean, kern, new_cov) 
 {
-  ## To avoid pathological behaviour of the opm optimization function in rare cases
-  if((hp %>% abs %>% sum) > 20){return(10^10)}
-  
   cov = kern_to_cov(db$Timestamp, kern, theta = hp[1:2], sigma = hp[[3]]) + new_cov
   inv = tryCatch(solve(cov), error = function(e){MASS::ginv(cov)})
   return(-dmvnorm(db$Output, mean, inv , log = T))
@@ -189,10 +186,7 @@ logL_GP_mod = function(hp, db, mean, kern, new_cov, pen_diag = NULL)
   ## new_cov : posterior covariance matrix of the mean GP (mu_0). Used to compute correction term (cor_term)
   ####
   ##return : value of the modified Gaussian log-likelihood for one GP as it appears in the model
-  
-  ## To avoid pathological behaviour of the opm optimization function in rare cases
-  if((hp %>% abs %>% sum) > 20){return(10^10)}
-  
+
   if(length(mean) == 1){mean = rep(mean, nrow(db))} ## mean is equal for all timestamps
   ## Mean GP (mu_0) is noiseless and thus has only 2 hp. We add a penalty on diag for numerical stability
   sigma = ifelse((length(hp) == 3), hp[[3]], pen_diag) 
@@ -201,6 +195,7 @@ logL_GP_mod = function(hp, db, mean, kern, new_cov, pen_diag = NULL)
   
   LL_norm = - dmvnorm(db$Output, mean, inv, log = T) ## classic gaussian loglikelihood
   cor_term =  0.5 * (inv * new_cov) %>% sum() ## correction term (0.5 * Trace(inv %*% new_cov))
+
   return(LL_norm + cor_term)
 }
 
@@ -212,11 +207,7 @@ logL_GP_mod_common_hp = function(hp, db, mean, kern, new_cov)
   ## new_cov : posterior covariance matrix of the mean GP (mu_0). Used to compute correction term (cor_term)
   ####
   ##return : value of the modified Gaussian log-likelihood for the sum of all indiv with same HPs
-  
-  ## To avoid pathological behaviour of the opm optimization function in rare cases
-  if((hp %>% abs %>% sum) > 20){return(10^10)}
-  ## Mean GP (mu_0) is noiseless and thus has only 2 hp. We add a penalty on diag for numerical stability
-  
+
   LL_norm = 0
   cor_term = 0
   t_i_old = NULL
@@ -237,7 +228,7 @@ logL_GP_mod_common_hp = function(hp, db, mean, kern, new_cov)
     
     t_i_old = t_i
   }
-  return(LL_norm + cor_term)
+return(LL_norm + cor_term)
 }
 
 logL_monitoring = function(hp, db, kern_i, kern_0, mean_mu, cov_mu, m_0)
@@ -284,7 +275,7 @@ deriv_hp2 = function(mat, theta)
 }
 
 gr_GP = function(hp, db, mean, kern, new_cov)
-{ 
+{
   y = db$Output
   t = db$Timestamp
   
@@ -293,7 +284,7 @@ gr_GP = function(hp, db, mean, kern, new_cov)
   prod_inv = inv %*% (y - mean) 
   cste_term = prod_inv %*% t(prod_inv) - inv
   
-  g_1 = 1/2 * (cste_term %*% kern_to_cov(t, deriv_hp1, theta = hp[1:2], sigma = 0)) %>%  diag() %>% sum()
+  g_1 = 1/2 * (cste_term %*% kern_to_cov(t, deriv_hp1, theta = hp[1:2], sigma = 0)) %>% diag() %>% sum()
   if(length(t) == 1)
   { ## Second hp has a 0 diagonal, and dist() return an error for only one observation 
     g_2 = 0
@@ -344,7 +335,7 @@ gr_GP_mod_common_hp = function(hp, db, mean, kern, new_cov)
   g_2 = 0
   g_3 = 0
   t_i_old = NULL
-  
+
   for(i in unique(db$ID))
   {
     t_i = db %>% filter(ID == i) %>% pull(Timestamp)
