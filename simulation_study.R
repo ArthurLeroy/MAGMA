@@ -530,14 +530,14 @@ tableM_20to200_FF$ID = as.character(tableM_20to200_FF$ID)
 tableM_20to200_FF$ID_dataset = as.character(tableM_20to200_FF$ID_dataset)
 
 ##### TRAIN ALL MODEL ####
-db_to_train = tableTF
+db_to_train = tableM_20to200_TT %>% filter(nb_M != 21) %>% filter(ID_dataset %in% as.character(1:20))
 t1 = Sys.time()
 train_loop = loop_training(db_to_train, prior_mean = 0, ini_hp = list('theta_0' = c(1,1), 'theta_i' = c(1, 1, 0.2)),
-                           kern_0 = kernel_mu, kern_i = kernel, diff_M = F, common_times = T, common_hp = F)
+                           kern_0 = kernel_mu, kern_i = kernel, diff_M = T, common_times = T, common_hp = T)
 t2 = Sys.time()
 train_loop[['Time_train_tot']] = t2 - t1
 
-saveRDS(train_loop, 'Simulations/Training/train_TF.rds')
+# saveRDS(train_loop, 'Simulations/Training/train_TT.rds')
 
 ##### RESULTS : evaluation of pred  ####
 # train_loop = readRDS('Simulations/Training/train_FT.rds')
@@ -569,34 +569,34 @@ saveRDS(train_loop, 'Simulations/Training/train_TF.rds')
 # 
 # res = simu_var_N(tab, train_loop, nb_obs_max = 20, nb_test = 10)
 # 
-# write.csv2(res, "Simulations/Results/res_mu_rep_100_M_20_N_30_time_TRUE_hp_TRUE.csv", row.names=FALSE)
+# write.csv2(res, "Simulations/Results/res_pred_N20-10_M20_TT.csv", row.names=FALSE)
 # 
-#res %>% group_by(Method) %>% summarise_all(list('Mean' = mean, 'SD' = sd), na.rm = TRUE)
+# res %>% group_by(Method) %>% summarise_all(list('Mean' = mean, 'SD' = sd), na.rm = TRUE)
 # ggplot(res) + geom_boxplot(aes(x = as.factor(N), y = MSE, fill = Method)) + scale_y_continuous(limits = c(0,100))
 
 ##### RESULTS : pred with varying values of M ####
 
 #train_loop = readRDS('Simulations/Training/train_M_0to20_TT.rds')
-tab_M = tableM_0to20_TT
-
-res_M = loop_pred(tab_M, train_loop, nb_obs = 20, nb_test = 10, diff_M = T)
-
-#write.csv2(res_M, "Simulations/Results/res_mu_rep_100_M_20_N_30_time_TRUE_hp_TRUE.csv", row.names=FALSE)
-
-res_M %>% group_by(Method, M) %>% summarise_all(list('Mean' = mean, 'SD' = sd), na.rm = TRUE)
-# ggplot(res_M) + geom_boxplot(aes(x = as.factor(M), y = MSE, fill = Method)) + scale_y_continuous(limits = c(0,100))
+# tab_M = tableM_0to20_TT #%>% filter(nb_M != 21)
+# 
+# res_M = loop_pred(tab_M, train_loop, nb_obs = 20, nb_test = 10, diff_M = T)
+# 
+# write.csv2(res_M, "Simulations/Results/res_pred_N20-10_M0to20_TT.csv", row.names=FALSE)
+# 
+# res_M %>% group_by(Method) %>% summarise_all(list('Mean' = mean, 'SD' = sd), na.rm = TRUE)
+# ggplot(res_M) + geom_boxplot(aes(x = as.factor(M), y = MSE, fill = Method)) + scale_y_continuous(limits = c(0,70))
 
 
 ##### RESULTS : mu_0 with varying M ####
 
-# train = readRDS('Simulations/Training/train_M_0to20_TT.rds')
-# tab_mu_M = tableM_0to20_TT
+#train = readRDS('Simulations/Training/train_M_0to20_TT.rds')
+# tab_mu_M = tableM_0to20_TT #%>% filter(nb_M != 21)
 # 
 # res_mu_M = eval_mu_M(tab_mu_M, train_loop)
-# write.csv2(res_mu_M, "Simulations/Results/res_mu_rep_100_M_0to20_N_30_time_TRUE_hp_TRUE.csv", row.names=FALSE)
+# write.csv2(res_mu_M, "Simulations/Results/res_mu_N20-10_M0to20_TT.csv", row.names=FALSE)
 # 
-# res_mu_M %>% group_by(Method) %>% summarise_all(list('Mean' = mean, 'SD' = sd), na.rm = TRUE)
-# ggplot(res_mu_M) + geom_boxplot(aes(x = as.factor(M), y = MSE, fill = Method)) + scale_y_continuous(limits = c(0,30))
+# res_mu_M %>% group_by(Method, M) %>% summarise_all(list('Mean' = mean, 'SD' = sd), na.rm = TRUE)
+# ggplot(res_mu_M) + geom_boxplot(aes(x = as.factor(M), y = MSE, fill = Method)) + scale_y_continuous(limits = c(0,10))
 
 
 ##### PLOT OF RESULTS #### 
