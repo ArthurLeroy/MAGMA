@@ -64,12 +64,12 @@ simu_indiv = function(ID, t, mean, kern, a, b, sigma)
   # var : variance parameter of the error
   ##
   # return : a simulated individual
-  db = tibble('ID' = ID,
-              'Timestamp' = t,
-              'Output' = rmvnorm(1, mean, kern_to_cov(t, kern, theta = c(a,b), sigma)) %>% as.vector(),
-              'a' = a,
-              'b' = b,
-              'sigma' = sigma)
+    db = tibble('ID' = ID,
+                'Timestamp' = t,
+                'Output' = rmvnorm(1, mean, kern_to_cov(t, kern, theta = c(a,b), sigma)) %>% as.vector(),
+                'a' = a,
+                'b' = b,
+                'sigma' = sigma)
   return(db)
 }
 
@@ -470,7 +470,7 @@ eval_mu_M = function(db, train_loop)
 #     datasets_multi_N(rep = 100, M = 21, N = 30, G = seq(0, 10, 0.05), common_times = i,
 #                      common_hp = j, kern_0 = kernel_mu, kern_i = kernel, int_mu_a = c(0,5), int_mu_b = c(0,2),
 #                      int_i_a = c(0,5), int_i_b = c(0,2), int_i_sigma = c(0,2)) %>%
-#     write_csv2(paste0('Simulations/Data/db_rep_100_M_20_N_30_time_', i, '_hp_', j,'.csv'), row.names=FALSE)
+#     write_csv2(paste0('Simulations/Data/db_rep_100_M_20_N_30_time_', i, '_hp_', j,'.csv'))
 #   }
 # }
 
@@ -482,12 +482,15 @@ eval_mu_M = function(db, train_loop)
 #     datasets_multi_M(rep = 100, vec_M = c(21, 51, 101, 151, 201), N = 30, G = seq(0, 10, 0.05), common_times = i,
 #                      common_hp = j, kern_0 = kernel_mu, kern_i = kernel, int_mu_a = c(0,5), int_mu_b = c(0,2),
 #                      int_i_a = c(0,5), int_i_b = c(0,2), int_i_sigma = c(0,2)) %>%
-#       write_csv2(paste0('Simulations/Data/db_rep_100_M_20to200_N_30_time_', i, '_hp_', j,'.csv'), row.names=FALSE)
+#       write_csv2(paste0('Simulations/Data/db_rep_100_M_20to200_N_30_time_', i, '_hp_', j,'.csv'))
 #   }
 # }
 
 
 ##### TABLES OF DATA ####
+tableGPFDA = read_csv2("Simulations/Data/db_GPFDA_M_20_N_30_time_TRUE_hp_TRUE.csv")
+tableGPFDA$ID = as.character(tableGPFDA$ID)
+tableGPFDA$ID_dataset = as.character(tableGPFDA$ID_dataset)
 
 ## Load the data and ensure IDs are filled as characters
 tableTT = read_csv2("Simulations/Data/db_rep_100_M_20_N_30_time_TRUE_hp_TRUE.csv")
@@ -530,38 +533,38 @@ tableM_20to200_FF$ID = as.character(tableM_20to200_FF$ID)
 tableM_20to200_FF$ID_dataset = as.character(tableM_20to200_FF$ID_dataset)
 
 ##### TRAIN ALL MODEL ####
-db_to_train = tableM_20to200_TT %>% filter(nb_M != 21) %>% filter(ID_dataset %in% as.character(1:20))
-t1 = Sys.time()
-train_loop = loop_training(db_to_train, prior_mean = 0, ini_hp = list('theta_0' = c(1,1), 'theta_i' = c(1, 1, 0.2)),
-                           kern_0 = kernel_mu, kern_i = kernel, diff_M = T, common_times = T, common_hp = T)
-t2 = Sys.time()
-train_loop[['Time_train_tot']] = t2 - t1
-
-# saveRDS(train_loop, 'Simulations/Training/train_TT.rds')
+# db_to_train = tableGPFDA
+# t1 = Sys.time()
+# train_loop = loop_training(db_to_train, prior_mean = 0, ini_hp = list('theta_0' = c(1,1), 'theta_i' = c(1, 1, 0.2)),
+#                            kern_0 = kernel_mu, kern_i = kernel, diff_M = F, common_times = T, common_hp = T)
+# t2 = Sys.time()
+# train_loop[['Time_train_tot']] = t2 - t1
+# 
+# saveRDS(train_loop, 'Simulations/Training/train_GPFDA_TT.rds')
 
 ##### RESULTS : evaluation of pred  ####
 # train_loop = readRDS('Simulations/Training/train_FT.rds')
-# tab_pred = tableTT
+# tab_pred = tableGPFDA
 # 
 # res_pred = loop_pred(tab_pred, train_loop, 20, 10, F)
 # 
-# write.csv2(res_pred, "Simulations/Results/res_pred_N20-10_M20_TT.csv", row.names=FALSE)
+# write.csv2(res_pred, "Simulations/Results/res_pred_GPFDA_TT.csv", row.names=FALSE)
 # 
 # res_pred %>% group_by(Method) %>% summarise_all(list('Mean' = mean, 'SD' = sd), na.rm = TRUE)
-# ggplot(res_pred) + geom_boxplot(aes(x = Method, y = MSE, fill = Method)) + scale_y_continuous(limits = c(0,100))
+# ggplot(res_pred) + geom_boxplot(aes(x = Method, y = MSE, fill = Method)) + scale_y_continuous(limits = c(0,200))
 
 
 ##### RESULTS : evaluation of mu_0  ####
 # train_loop = readRDS('Simulations/Training/train_TT.rds')
-# tab_mu = tableTT
+# tab_mu = tableGPFDA
 # 
 # res_mu = eval_mu(tab_mu, train_loop)
 # 
-# write.csv2(res_mu, "Simulations/Results/res_mu_N20-10_M20_FT.csv", row.names=FALSE)
+# write.csv2(res_mu, "Simulations/Results/res_GPFDA_TT.csv", row.names=FALSE)
 # 
 # res_mu %>% group_by(Method) %>% summarise_all(list('Mean' = mean, 'SD' = sd), na.rm = TRUE)
 # ggplot(res_mu) + geom_boxplot(aes(x = Method, y = MSE, fill = Method)) #+ scale_y_continuous(limits = c(0,100))
-
+# 
 
 ##### RESULTS : pred with varying values of N* #####
 # train_loop = readRDS('Simulations/Training/train_TT.rds')
