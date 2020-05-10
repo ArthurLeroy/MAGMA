@@ -114,7 +114,7 @@ posterior_mu = function(db, new_db, timestamps, m_0, kern_0, kern_i, hp)
   ## return : pamameters of the mean GP at timestamps
   t_pred = timestamps %>% union(unique(db$Timestamp)) %>% union(unique(new_db$Timestamp)) %>% sort()
   ## Mean GP (mu_0) is noiseless and thus has only 2 hp. We add a penalty on diag for numerical stability
-  pen_diag = sapply(hp$theta_i, function(x) x[[3]]) %>% mean
+  pen_diag = 0.01#sapply(hp$theta_i, function(x) x[[3]]) %>% mean
 
   inv_0 = kern_to_inv(t_pred, kern_0, hp$theta_0, sigma = pen_diag)
   inv_i = kern_to_inv(db, kern_i, hp$theta_i, sigma = 0)
