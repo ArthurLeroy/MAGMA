@@ -64,9 +64,9 @@ db = raw_db %>% filter(COMPETITION_BASSIN == 50) %>%
      transmute(ID = Identifiant, Timestamp = Age, Output = TEMPS, Gender = INDIVIDU_GENRE) %>% 
      mutate(Timestamp = Timestamp %>% plyr::round_any(round_step)) %>% 
      group_by(ID, Timestamp) %>% summarise_all(mean) %>% 
-     filter(Timestamp > age_min, Timestamp < age_max) %>% group_by(ID) %>% filter(n() > 4)
+     filter(Timestamp > age_min, Timestamp < age_max) %>% group_by(ID) %>% filter(n() > 8)
 ## If you need a subset of db
-db = db %>% ungroup() %>% filter(ID %in% unique(.$ID)[1:200])
+#db = db %>% ungroup() %>% filter(ID %in% unique(.$ID)[1:200])
  
 ## Split by gender and draw the training/testing sets
 db_m = db %>% filter(Gender == 1) %>% dplyr::select(- Gender) %>% split_train(ratio_train = 0.6)
@@ -91,7 +91,7 @@ db_m %>% count(ID) %>% pull(n) %>% max
 db_f %>% count(ID) %>% pull(n) %>% max
 
 #### Spliting training and testing sets and select observed times
-db_m_train = db_m %>% filter(Training == 1) 
+db_m_train = db_m %>% filter(Training == 1)
 db_m_test = db_m %>% filter(Training == 0) %>% split_times(prop_test = 0.2)
 db_f_train = db_f %>% filter(Training == 1)
 db_f_test = db_f %>% filter(Training == 0) %>% split_times(prop_test = 0.2)
@@ -107,7 +107,7 @@ floop = function(i)
   db_pred_i = db_test %>% filter(ID == i) %>% filter(Observed == 0)
   t_i_pred = db_pred_i %>% pull(Timestamp)
 
-  res_algo = full_algo(db_train, db_obs_i, t_i_pred, kern_i = kernel, common_hp = T, plot = F, prior_mean = 0, kern_0 = kernel,
+  res_algo = full_algo(db_train, db_obs_i, t_i_pred, kern_i = kernel, common_hp = T, plot = F, prior_mean = 0, kern_0 = kernel_mu,
                        list_hp = model_train$hp, mu = NULL, ini_hp = ini_hp, hp_new_i = NULL)$Prediction
 
   pred_algo = res_algo$Mean 
@@ -120,3 +120,20 @@ floop = function(i)
 res_test = db_test$ID %>% unique() %>% lapply(floop)
 db_res = do.call('rbind', res_test)
 db_res %>% select(-ID) %>% summarise_all(list('Mean' = mean, 'SD' = sd), na.rm = TRUE)
+
+### Test on an individual 
+indiv = 'ALBERGE Valentin 02/04/1993'
+
+pred_example = full_algo(db_train,(db_test %>% filter(ID == indiv))[1:4,] , seq(10, 20, 0.01), kernel,
+                         common_hp = T, plot = T, prior_mean = 0, kernel, list_hp = model_train$hp, mu = NULL,
+                         ini_hp = ini_hp, hp_new_i = NULL)
+
+plot_gp(pred_example$Prediction, data_train = db_train, data = db_test %>% filter(ID == indiv),
+        mean = pred_example$Mean_process$pred_GP) + guides( color = FALSE)
+
+hp_one_gp = train_new_gp((db_test %>% filter(ID == indiv))[1:4,], 0, 0, ini_hp$theta_i, kernel)
+pred_gp((db_test %>% filter(ID == indiv))[1:4,], timestamps =  seq(10, 20, 0.01), mean_mu = 0, cov_mu = NULL, 
+            kern = kernel, theta = hp_one_gp$theta, sigma = hp_one_gp$sigma) %>% 
+       plot_gp(data_train = db_train, data = db_test %>% filter(ID == indiv),
+          mean = pred_example$Mean_process$pred_GP) + guides( color = FALSE)
+  
