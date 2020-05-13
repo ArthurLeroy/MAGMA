@@ -53,6 +53,8 @@ ratio_IC = function(obs, IC_inf, IC_sup)
 #          bind_cols(read_csv2('C:/Users/user/Google Drive/Travail/Data thèse/001 BaseParEpreuve/100 Nage Libre.csv',
 #                                col_types = cols_only(TEMPS  = col_double())))
 
+raw_db = read_csv2('Simulations/Data/db_100m_freestyle.csv')
+
 ## Set the width of the observational grid to reduce the size of matrices
 size_grid = 1000
 age_min = 10
@@ -64,7 +66,7 @@ db = raw_db %>% filter(COMPETITION_BASSIN == 50) %>%
      transmute(ID = Identifiant, Timestamp = Age, Output = TEMPS, Gender = INDIVIDU_GENRE) %>% 
      mutate(Timestamp = Timestamp %>% plyr::round_any(round_step)) %>% 
      group_by(ID, Timestamp) %>% summarise_all(mean) %>% 
-     filter(Timestamp > age_min, Timestamp < age_max) %>% group_by(ID) %>% filter(n() > 8)
+     filter(Timestamp > age_min, Timestamp < age_max) %>% group_by(ID) %>% filter(n() > 5)
 ## If you need a subset of db
 #db = db %>% ungroup() %>% filter(ID %in% unique(.$ID)[1:200])
  
@@ -100,9 +102,10 @@ db_train = db_m_train
 db_test = db_m_test
 
 model_train = training(db_train, 0, ini_hp, kernel_mu, kernel, common_hp = T)
-
+saveRDS(mdel_train, 'Simulations/Training/train_real_data_TT.rds')
 floop = function(i)
-{ print(i)
+{
+  print(i)
   db_obs_i = db_test %>% filter(ID == i) %>% filter(Observed == 1)
   db_pred_i = db_test %>% filter(ID == i) %>% filter(Observed == 0)
   t_i_pred = db_pred_i %>% pull(Timestamp)
@@ -122,10 +125,10 @@ db_res = do.call('rbind', res_test)
 db_res %>% select(-ID) %>% summarise_all(list('Mean' = mean, 'SD' = sd), na.rm = TRUE)
 
 ### Test on an individual 
-indiv = 'ALBERGE Valentin 02/04/1993'
+indiv = 'AGNEL Yannick 09/06/1992'
 
-pred_example = full_algo(db_train,(db_test %>% filter(ID == indiv))[1:4,] , seq(10, 20, 0.01), kernel,
-                         common_hp = T, plot = T, prior_mean = 0, kernel, list_hp = model_train$hp, mu = NULL,
+pred_example = full_algo(db_train,(db_test %>% filter(ID == indiv))[1:6,] , seq(10, 20, 0.01), kernel,
+                         common_hp = T, plot = F, prior_mean = 0, kernel, list_hp = model_train$hp, mu = NULL,
                          ini_hp = ini_hp, hp_new_i = NULL)
 
 plot_gp(pred_example$Prediction, data_train = db_train, data = db_test %>% filter(ID == indiv),
@@ -135,5 +138,5 @@ hp_one_gp = train_new_gp((db_test %>% filter(ID == indiv))[1:4,], 0, 0, ini_hp$t
 pred_gp((db_test %>% filter(ID == indiv))[1:4,], timestamps =  seq(10, 20, 0.01), mean_mu = 0, cov_mu = NULL, 
             kern = kernel, theta = hp_one_gp$theta, sigma = hp_one_gp$sigma) %>% 
        plot_gp(data_train = db_train, data = db_test %>% filter(ID == indiv),
-          mean = pred_example$Mean_process$pred_GP) + guides( color = FALSE)
+          mean = pred_example$Mean_process$pred_GP) + guides(color = FALSE)
   

@@ -32,7 +32,7 @@ training = function(db, prior_mean, ini_hp, kern_0, kern_i, common_hp = T)
   list_plot = list()
   t1 = Sys.time()
   for(i in 1:n_loop_max)
-  { browser()
+  { 
     print(i)
     ## E-Step
     param = e_step(db, prior_mean, kern_0, kern_i, hp)   

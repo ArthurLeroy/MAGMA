@@ -186,7 +186,7 @@ logL_GP_mod = function(hp, db, mean, kern, new_cov, pen_diag = NULL)
   ## new_cov : posterior covariance matrix of the mean GP (mu_0). Used to compute correction term (cor_term)
   ####
   ##return : value of the modified Gaussian log-likelihood for one GP as it appears in the model 
-  
+  t1 = Sys.time()
   if(length(mean) == 1){mean = rep(mean, nrow(db))} ## mean is equal for all timestamps
   ## Mean GP (mu_0) is noiseless and thus has only 2 hp. We add a penalty on diag for numerical stability
   sigma = ifelse((length(hp) == 3), hp[[3]], pen_diag) 
@@ -195,7 +195,8 @@ logL_GP_mod = function(hp, db, mean, kern, new_cov, pen_diag = NULL)
   
   LL_norm = - dmvnorm(db$Output, mean, inv, log = T) ## classic gaussian loglikelihood
   cor_term =  0.5 * (inv * new_cov) %>% sum() ## correction term (0.5 * Trace(inv %*% new_cov))
-
+  t2 = Sys.time()
+  print(paste0('LogL_0 iteration ', t2 - t1))
   return(LL_norm + cor_term)
 }
 
@@ -207,11 +208,10 @@ logL_GP_mod_common_hp = function(hp, db, mean, kern, new_cov)
   ## new_cov : posterior covariance matrix of the mean GP (mu_0). Used to compute correction term (cor_term)
   ####
   ##return : value of the modified Gaussian log-likelihood for the sum of all indiv with same HPs
-
   LL_norm = 0
   cor_term = 0
   t_i_old = NULL
-
+  t1 = Sys.time()
   for(i in unique(db$ID))
   {
     t_i = db %>% filter(ID == i) %>% pull(Timestamp)
@@ -228,6 +228,8 @@ logL_GP_mod_common_hp = function(hp, db, mean, kern, new_cov)
     
     t_i_old = t_i
   }
+  t2 = Sys.time()
+  print(paste0('LogL_i iteration ', t2 - t1))
 return(LL_norm + cor_term)
 }
 
@@ -405,7 +407,7 @@ m_step = function(db, old_hp, mean, cov, kern_0, kern_i, m_0, common_hp)
   list_ID = unique(db$ID)
   ## Mean GP (mu_0) is noiseless and thus has only 2 hp. We add a penalty on diag for numerical stability
   pen_diag = sapply(old_hp$theta_i, function(x) 2*x[[3]]) %>% mean
-  browser()
+
   t1 = Sys.time()
   new_theta_0 = opm(old_hp$theta_0, logL_GP_mod, gr = gr_GP_mod, db = mean, mean = m_0, kern = kern_0,
                     new_cov = cov, pen_diag = pen_diag, method = "L-BFGS-B", control = list(kkt = FALSE))[1,1:2]
