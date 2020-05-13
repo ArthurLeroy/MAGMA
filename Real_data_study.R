@@ -102,7 +102,7 @@ db_train = db_m_train
 db_test = db_m_test
 
 model_train = training(db_train, 0, ini_hp, kernel_mu, kernel, common_hp = T)
-saveRDS(mdel_train, 'Simulations/Training/train_real_data_TT.rds')
+saveRDS(model_train, 'Simulations/Training/train_real_data_TT.rds')
 floop = function(i)
 {
   print(i)
