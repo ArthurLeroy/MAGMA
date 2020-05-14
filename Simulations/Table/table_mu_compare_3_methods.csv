@@ -1,0 +1,4 @@
+Method;MSE_Mean;Ratio_IC_Mean;MSE_SD;Ratio_IC_SD
+Algo;1,3;94,3;2,0;11,3
+GPFDA;2,4;99,6;3,6; 2,8
+One GP;NA;NA;NA;NA

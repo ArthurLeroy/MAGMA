@@ -1,0 +1,4 @@
+Method;MSE_Mean;Ratio_IC_Mean;MSE_SD;Ratio_IC_SD
+Algo;19,9;91,6; 54,7;17,8
+GPFDA;38,9;88,3; 75,9;23,2
+One GP;72,9;78,5;115,0;30,5
