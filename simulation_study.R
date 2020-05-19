@@ -604,10 +604,15 @@ tableM_20to200_FF$ID_dataset = as.character(tableM_20to200_FF$ID_dataset)
 
 ##### PLOT OF RESULTS #### 
 
-# res_plot = read_csv2("Simulations/Results/res_pred_N20-10_M0to20_TT.csv")
-# table_res = res_plot %>% dplyr::select(MSE, Ratio_IC, Method) %>% group_by(Method) %>% 
+# table_res = res5  %>% dplyr::select(Time_train, Time_pred, Setting) %>% group_by(Setting) %>%
+#    summarise_all(list('Mean' = mean, 'SD' = sd), na.rm = TRUE) %>% mutate_if(is.numeric, round, 1) %>% 
+#    mutate(Train = paste0(Time_train_Mean,' (', Time_train_SD, ')'), Pred = paste0(Time_pred_Mean,' (', Time_pred_SD, ')')) %>%
+#   dplyr::select(Setting, Train, Pred) 
+#
+# res_plot = read_csv2("Simulations/Results/res_mu_N20-10_M20_FF.csv")
+# table_res = res_plot %>% group_by(Method) %>%
 #   summarise_all(list('Mean' = mean, 'SD' = sd), na.rm = TRUE) %>% mutate_if(is.numeric, round, 1)
-# 
+#
 # write_csv2(table_res, 'Simulations/Table/table_pred_FF.csv')
 # 
 # ggplot(res_plot) + geom_boxplot(aes(x = as.factor(N), y = MSE, fill = Method)) 
