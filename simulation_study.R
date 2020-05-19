@@ -307,9 +307,9 @@ loop_pred = function(db_loop, train_loop, nb_obs, nb_test, diff_M)
                          list_hp, mu = NULL, ini_hp, hp_new_i = NULL)$Prediction
     t2 = Sys.time()
     ## Train new indiv for one GP model
-    hp_one_gp_hp = train_new_gp(db_obs_i, rep(prior_mean, nrow(db_obs_i)), cov_mu = 0, ini_hp$theta_i, kern_i)
+    hp_one_gp = train_new_gp(db_obs_i, rep(prior_mean, nrow(db_obs_i)), cov_mu = 0, ini_hp$theta_i, kern_i)
     ## Prediction for one GP model
-    res_one_gp = pred_gp(db_obs_i, t_i_pred, prior_mean, cov_mu = NULL, kern_i, hp_one_gp_hp$theta, hp_one_gp_hp$sigma)
+    res_one_gp = pred_gp(db_obs_i, t_i_pred, prior_mean, cov_mu = NULL, kern_i, hp_one_gp$theta, hp_one_gp$sigma)
     t3 = Sys.time()
     ## Prediction for GPFDA (unable for uncommon timestamps)
     if(common_times){res_gpfda = pred_gpfda(model_gpfda, db_obs_i, t_i_pred)}
@@ -604,14 +604,16 @@ tableM_20to200_FF$ID_dataset = as.character(tableM_20to200_FF$ID_dataset)
 
 ##### PLOT OF RESULTS #### 
 
-res_plot = read_csv2("Simulations/Results/res_pred_N20-10_M20_FF.csv")
-table_res = res_plot %>% dplyr::select(MSE, Ratio_IC, Method) %>% group_by(Method) %>% 
-  summarise_all(list('Mean' = mean, 'SD' = sd), na.rm = TRUE) %>% mutate_if(is.numeric, round, 1)
-
-write_csv2(table_res, 'Simulations/Table/table_pred_FF.csv')
-
-ggplot(res_plot) + geom_boxplot(aes(x = as.factor(N), y = MSE, fill = Method))
-ggplot(res_plot) + geom_boxplot(aes(x = as.factor(M), y = MSE, fill = Method)) + scale_y_continuous(limits = c(0,15))
+# res_plot = read_csv2("Simulations/Results/res_pred_N20-10_M0to20_TT.csv")
+# table_res = res_plot %>% dplyr::select(MSE, Ratio_IC, Method) %>% group_by(Method) %>% 
+#   summarise_all(list('Mean' = mean, 'SD' = sd), na.rm = TRUE) %>% mutate_if(is.numeric, round, 1)
+# 
+# write_csv2(table_res, 'Simulations/Table/table_pred_FF.csv')
+# 
+# ggplot(res_plot) + geom_boxplot(aes(x = as.factor(N), y = MSE, fill = Method)) 
+# ggplot(res_plot) + geom_boxplot(aes(x = as.factor(M), y = MSE, fill = Method)) +
+#   facet_wrap( ~ as.factor(M), scales="free") +
+#   scale_y_continuous(limits = c(0,50))
 
 ##### TESTS SIMU ####
 # bla_db = datasets_multi_N(rep = 10, M = 21, N = 30, G = seq(0, 10, 0.05), common_times = T,

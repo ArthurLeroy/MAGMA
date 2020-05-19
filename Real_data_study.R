@@ -103,6 +103,8 @@ db_test = db_m_test
 
 model_train = training(db_train, 0, ini_hp, kernel_mu, kernel, common_hp = T)
 saveRDS(model_train, 'Simulations/Training/train_real_data_TT.rds')
+
+post_mu = posterior_mu(db_train, db_train, db_m$Timestamp, 0, kernel_mu, kernel, model_train$hp)
 floop = function(i)
 {
   print(i)
@@ -111,18 +113,32 @@ floop = function(i)
   t_i_pred = db_pred_i %>% pull(Timestamp)
 
   res_algo = full_algo(db_train, db_obs_i, t_i_pred, kern_i = kernel, common_hp = T, plot = F, prior_mean = 0, kern_0 = kernel_mu,
-                       list_hp = model_train$hp, mu = NULL, ini_hp = ini_hp, hp_new_i = NULL)$Prediction
+                       list_hp = model_train$hp, mu = post_mu, ini_hp = ini_hp, hp_new_i = NULL)$Prediction
 
+  hp_one_gp = train_new_gp(db_obs_i, rep(0, nrow(db_obs_i)), cov_mu = 0, ini_hp$theta_i, kern_i = kernel)
+  ## Prediction for one GP model
+  res_one_gp = pred_gp(db_obs_i, t_i_pred, 0, cov_mu = NULL, kernel, hp_one_gp$theta, hp_one_gp$sigma)
+  
   pred_algo = res_algo$Mean 
   sd_algo = res_algo$Var %>% sqrt()
-  tibble('ID' = i, 
-         'MSE' = loss(pred_algo, db_pred_i$Output) %>% MSE(),
-         'Ratio_IC' = ratio_IC(db_pred_i$Output, pred_algo - 1.96 * sd_algo, pred_algo + 1.96 * sd_algo)) %>% 
-  return()
+  
+  pred_one_gp = res_one_gp$Mean 
+  sd_one_gp = res_one_gp$Var %>% sqrt()
+  
+  eval_one_gp = tibble('ID' = i,
+                       'MSE' = loss(pred_one_gp, db_pred_i$Output) %>% MSE(),
+                       'Ratio_IC' = ratio_IC(db_pred_i$Output, pred_one_gp - 1.96 * sd_one_gp, pred_one_gp + 1.96 * sd_one_gp))
+  
+  eval_algo = tibble('ID' = i, 
+                     'MSE' = loss(pred_algo, db_pred_i$Output) %>% MSE(),
+                     'Ratio_IC' = ratio_IC(db_pred_i$Output, pred_algo - 1.96 * sd_algo, pred_algo + 1.96 * sd_algo))
+  
+  rbind(eval_algo, eval_one_gp) %>% mutate(Method = c('Algo', 'One GP')) %>% return()
 }
 res_test = db_test$ID %>% unique() %>% lapply(floop)
 db_res = do.call('rbind', res_test)
-db_res %>% select(-ID) %>% summarise_all(list('Mean' = mean, 'SD' = sd), na.rm = TRUE)
+db_res %>% select(-ID) %>% group_by(Method) %>% summarise_all(list('Mean' = mean, 'SD' = sd), na.rm = TRUE) %>% 
+write_csv2( 'Simulations/Table/res_pred_realdata_men.csv')
 
 ### Test on an individual 
 indiv = 'AGNEL Yannick 09/06/1992'
