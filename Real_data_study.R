@@ -141,14 +141,18 @@ db_res %>% select(-ID) %>% group_by(Method) %>% summarise_all(list('Mean' = mean
 write_csv2( 'Simulations/Table/res_pred_realdata_men.csv')
 
 ### Test on an individual 
-indiv = 'AGNEL Yannick 09/06/1992'
+indiv = unique(db_test$ID)[99]
+db_obs = (db_test %>% filter(ID == indiv))
 
-pred_example = full_algo(db_train,(db_test %>% filter(ID == indiv))[1:6,] , seq(10, 20, 0.01), kernel,
-                         common_hp = T, plot = F, prior_mean = 0, kernel, list_hp = model_train$hp, mu = NULL,
+post_mu = posterior_mu(db_train, db_obs[1:6,], seq(10, 20, 0.01), 0, kernel_mu, kernel, model_train$hp)
+
+pred_example = full_algo(db_train, db_obs[1:6,], seq(10, 20, 0.01), kernel,
+                         common_hp = T, plot = F, prior_mean = 0, kernel, list_hp = model_train$hp, mu = post_mu,
                          ini_hp = ini_hp, hp_new_i = NULL)
 
-plot_gp(pred_example$Prediction, data_train = db_train, data = db_test %>% filter(ID == indiv),
-        mean = pred_example$Mean_process$pred_GP) + guides( color = FALSE)
+plot_gp(pred_example$Prediction, data_train = db_train %>% filter(ID %in% unique(db_train$ID)[1:50]), data = db_test %>% filter(ID == indiv),
+        mean = pred_example$Mean_process$pred_GP) + guides(color = FALSE) + 
+  geom_point(data = db_obs[6:nrow(db_obs),], aes(Timestamp, Output), color ='blue') 
 
 hp_one_gp = train_new_gp((db_test %>% filter(ID == indiv))[1:4,], 0, 0, ini_hp$theta_i, kernel)
 pred_gp((db_test %>% filter(ID == indiv))[1:4,], timestamps =  seq(10, 20, 0.01), mean_mu = 0, cov_mu = NULL, 
