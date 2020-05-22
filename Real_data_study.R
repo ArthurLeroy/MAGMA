@@ -98,13 +98,15 @@ db_m_test = db_m %>% filter(Training == 0) %>% split_times(prop_test = 0.2)
 db_f_train = db_f %>% filter(Training == 1)
 db_f_test = db_f %>% filter(Training == 0) %>% split_times(prop_test = 0.2)
 
-db_train = db_m_train
-db_test = db_m_test
+db_train = db_f_train
+db_test = db_f_test
 
-model_train = training(db_train, 0, ini_hp, kernel_mu, kernel, common_hp = T)
-saveRDS(model_train, 'Simulations/Training/train_real_data_TT.rds')
-
-post_mu = posterior_mu(db_train, db_train, db_m$Timestamp, 0, kernel_mu, kernel, model_train$hp)
+# model_train = training(db_train, 0, ini_hp, kernel_mu, kernel, common_hp = T)
+# saveRDS(model_train 'Simulations/Training/train_real_data_female_TT.rds')
+# list_ID = model_train$hp$theta_i %>% names
+# db_train = db_f %>% filter(ID %in% list_ID)
+# db_test = db_f %>% filter(ID %notin% list_ID) %>% split_times(prop_test = 0.2)
+post_mu = posterior_mu(db_train, db_train, db_f$Timestamp, 0, kernel_mu, kernel, model_train$hp)
 floop = function(i)
 {
   print(i)
@@ -138,12 +140,12 @@ floop = function(i)
 res_test = db_test$ID %>% unique() %>% lapply(floop)
 db_res = do.call('rbind', res_test)
 db_res %>% select(-ID) %>% group_by(Method) %>% summarise_all(list('Mean' = mean, 'SD' = sd), na.rm = TRUE) %>% 
-write_csv2( 'Simulations/Table/res_pred_realdata_men.csv')
+write_csv2( 'Simulations/Table/res_pred_realdata_women.csv')
 
 ### Test on an individual 
-indiv = 'AGNEL Yannick 09/06/1992'
+indiv = 'LAUMOND Émilie 22/02/2000'
 
-pred_example = full_algo(db_train,(db_test %>% filter(ID == indiv))[1:6,] , seq(10, 20, 0.01), kernel,
+pred_example = full_algo(db_train,(db_test %>% filter(ID == indiv))[1:4,] , seq(10, 20, 0.01), kernel,
                          common_hp = T, plot = F, prior_mean = 0, kernel, list_hp = model_train$hp, mu = NULL,
                          ini_hp = ini_hp, hp_new_i = NULL)
 
