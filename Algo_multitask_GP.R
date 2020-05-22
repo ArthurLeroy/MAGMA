@@ -200,6 +200,47 @@ pred_gp_animate = function(db, timestamps = NULL, mean_mu = 0, cov_mu = NULL,
   return(all_pred)
 }
 
+full_algo = function(db, new_db, timestamps, kern_i, common_hp = T, plot = T, prior_mean,
+                     kern_0 = NULL, list_hp = NULL, mu = NULL, ini_hp = NULL, hp_new_i = NULL)
+{ ## db : Database containing all training data from all individuals. Column: ID - Timestamp - Output.
+  ## new_db : Database containing data for a new individual we want a prediction on.
+  ## timestamps : Timestamps we want to predict at.
+  ## kern_i : Kernel associated to individual GPs.
+  ## plot : Boolean indicating whether we want to display a graph at the end of computations.
+  ## prior_mean : Prior arbitrary value for the mean process. Optional, not needed if 'mu' is given.
+  ## kern_0 : Kernel associated to the mean GPs. Optional, not needed if 'mu' is given.
+  ## list_hp : Hyper-parameters for all individuals in training set. Optional, computed if NULL.
+  ## mu : Database containing parameters of the mean GP at all prediction timestamps. Optional, computed if NULL.
+  ## ini_hp : Initial values of the HP to start the training. Optional, not needed if 'list_hp' is given.
+  ## hp_new_i : Hyper-pameters for the new individual to predict. Optional, computed if NULL. 
+  ####
+  ## return : predicted GP parameters | posterior mean process | all trained hyperparameters
+  
+  ## If hp are not provided, train the model
+  if(is.null(list_hp)){list_hp = training(db, prior_mean, ini_hp, kern_0, kern_i, common_hp)$hp}
+  
+  ## If mean GP (mu_0) paramaters at prediction timestamps are not provided , compute them
+  if(is.null(mu)){mu = posterior_mu(db, new_db, timestamps, prior_mean, kern_0, kern_i, list_hp)}
+  
+  ## If hyperparameters of the GP for the new individuals are not provided, learn them
+  ## If hyperparameters are common across individuals by hypothesis, simply pick them up from the trained model
+  if(is.null(hp_new_i) & common_hp){hp_new_i = list('theta' = list_hp$theta_i[[1]][1:2], 
+                                                    'sigma' = list_hp$theta_i[[1]][[3]])}
+  else if(is.null(hp_new_i)){hp_new_i = train_new_gp(new_db, mu$mean, mu$cov, ini_hp$theta_i, kern_i)}
+  
+  pred = pred_gp(new_db, timestamps, mean_mu = mu$mean, cov_mu = mu$cov, kern_i, hp_new_i$theta, hp_new_i$sigma)
+  
+  ## If True, display a plot of the resulting GP prediction 
+  if(plot)
+  {
+    (plot_gp(pred, data = new_db, data_train = db) + 
+       geom_line(data = mu$pred_GP, aes(x = Timestamp, y = Mean), color = 'black', linetype = 'dashed')) %>% print()
+  }  
+  
+  list('Prediction' = pred, 'Mean_process' = mu, 'Hyperparameters' = list('other_i' = list_hp, 'new_i' = hp_new_i)) %>% 
+    return()
+}
+
 ##### PLOT FUNCTIONS ######################
 plot_gp = function(pred_gp, data = NULL, data_train = NULL, mean = NULL, mean_CI = F)
 { ## pred_gp : tibble coming out of the pred_gp() function, columns required : 'Timestamp', 'Mean', 'Var'
@@ -276,48 +317,6 @@ plot_animate = function(pred_gp, data = NULL, data_train = NULL, mean = NULL, me
   animate(gg, renderer = gifski_renderer(file)) %>% return()
 }
 
-##### APPLICATION #########################
-
-full_algo = function(db, new_db, timestamps, kern_i, common_hp = T, plot = T, prior_mean,
-                     kern_0 = NULL, list_hp = NULL, mu = NULL, ini_hp = NULL, hp_new_i = NULL)
-{ ## db : Database containing all training data from all individuals. Column: ID - Timestamp - Output.
-  ## new_db : Database containing data for a new individual we want a prediction on.
-  ## timestamps : Timestamps we want to predict at.
-  ## kern_i : Kernel associated to individual GPs.
-  ## plot : Boolean indicating whether we want to display a graph at the end of computations.
-  ## prior_mean : Prior arbitrary value for the mean process. Optional, not needed if 'mu' is given.
-  ## kern_0 : Kernel associated to the mean GPs. Optional, not needed if 'mu' is given.
-  ## list_hp : Hyper-parameters for all individuals in training set. Optional, computed if NULL.
-  ## mu : Database containing parameters of the mean GP at all prediction timestamps. Optional, computed if NULL.
-  ## ini_hp : Initial values of the HP to start the training. Optional, not needed if 'list_hp' is given.
-  ## hp_new_i : Hyper-pameters for the new individual to predict. Optional, computed if NULL. 
-  ####
-  ## return : predicted GP parameters | posterior mean process | all trained hyperparameters
-
-  ## If hp are not provided, train the model
-  if(is.null(list_hp)){list_hp = training(db, prior_mean, ini_hp, kern_0, kern_i, common_hp)$hp}
-  
-  ## If mean GP (mu_0) paramaters at prediction timestamps are not provided , compute them
-  if(is.null(mu)){mu = posterior_mu(db, new_db, timestamps, prior_mean, kern_0, kern_i, list_hp)}
-
-  ## If hyperparameters of the GP for the new individuals are not provided, learn them
-  ## If hyperparameters are common across individuals by hypothesis, simply pick them up from the trained model
-  if(is.null(hp_new_i) & common_hp){hp_new_i = list('theta' = list_hp$theta_i[[1]][1:2], 
-                                                    'sigma' = list_hp$theta_i[[1]][[3]])}
-  else if(is.null(hp_new_i)){hp_new_i = train_new_gp(new_db, mu$mean, mu$cov, ini_hp$theta_i, kern_i)}
-  
-  pred = pred_gp(new_db, timestamps, mean_mu = mu$mean, cov_mu = mu$cov, kern_i, hp_new_i$theta, hp_new_i$sigma)
-
-  ## If True, display a plot of the resulting GP prediction 
-  if(plot)
-  {
-    (plot_gp(pred, data = new_db, data_train = db) + 
-     geom_line(data = mu$pred_GP, aes(x = Timestamp, y = Mean), color = 'black', linetype = 'dashed')) %>% print()
-  }  
-
-  list('Prediction' = pred, 'Mean_process' = mu, 'Hyperparameters' = list('other_i' = list_hp, 'new_i' = hp_new_i)) %>% 
-  return()
-}
 
 ##### SIMULATED DATA ######################
 simu_indiv_test = function(ID, t, kern = kernel_mu, theta, mean, var)
