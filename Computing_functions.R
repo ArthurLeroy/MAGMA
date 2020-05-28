@@ -196,7 +196,7 @@ logL_GP_mod = function(hp, db, mean, kern, new_cov, pen_diag = NULL)
   LL_norm = - dmvnorm(db$Output, mean, inv, log = T) ## classic gaussian loglikelihood
   cor_term =  0.5 * (inv * new_cov) %>% sum() ## correction term (0.5 * Trace(inv %*% new_cov))
   t2 = Sys.time()
-  print(paste0('LogL_0 iteration ', t2 - t1))
+  #print(paste0('LogL_0 iteration ', t2 - t1))
   return(LL_norm + cor_term)
 }
 
@@ -229,7 +229,7 @@ logL_GP_mod_common_hp = function(hp, db, mean, kern, new_cov)
     t_i_old = t_i
   }
   t2 = Sys.time()
-  print(paste0('LogL_i iteration ', t2 - t1))
+  #print(paste0('LogL_i iteration ', t2 - t1))
 return(LL_norm + cor_term)
 }
 
