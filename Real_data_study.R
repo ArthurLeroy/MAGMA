@@ -140,8 +140,9 @@ floop = function(i)
 }
 res_test = db_test$ID %>% unique() %>% lapply(floop)
 db_res = do.call('rbind', res_test)
-db_res %>% select(-ID) %>% group_by(Method) %>% summarise_all(list('Mean' = mean, 'SD' = sd), na.rm = TRUE) %>% 
-write_csv2( 'Simulations/Table/res_pred_realdata_women_Ni>15.csv')
+db_res %>% select(-ID) %>% group_by(Method) %>% summarise_all(list('Mean' = mean, 'SD' = sd), na.rm = TRUE)
+
+#write.csv2( 'Simulations/Table/res_pred_realdata_women_Ni>15.csv', row.names=FALSE)
 
 ### Test on an individual 
 indiv = 'LAUMOND Émilie 22/02/2000'
