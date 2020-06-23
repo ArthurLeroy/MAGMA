@@ -3,6 +3,7 @@ source('Algo_multitask_GP.R')
 
 library(GPFDA)
 library(parallel)
+library(gridExtra)
 
 ##### COMPETING ALGO IN SIMU ####
 train_gpfda = function(db)
@@ -488,9 +489,9 @@ eval_mu_M = function(db, train_loop)
 
 
 ##### TABLES OF DATA ####
-tableGPFDA = read_csv2("Simulations/Data/db_GPFDA_M_20_N_30_time_TRUE_hp_TRUE.csv")
-tableGPFDA$ID = as.character(tableGPFDA$ID)
-tableGPFDA$ID_dataset = as.character(tableGPFDA$ID_dataset)
+# tableGPFDA = read_csv2("Simulations/Data/db_GPFDA_M_20_N_30_time_TRUE_hp_TRUE.csv")
+# tableGPFDA$ID = as.character(tableGPFDA$ID)
+# tableGPFDA$ID_dataset = as.character(tableGPFDA$ID_dataset)
 
 ## Load the data and ensure IDs are filled as characters
 tableTT = read_csv2("Simulations/Data/db_rep_100_M_20_N_30_time_TRUE_hp_TRUE.csv")
@@ -604,54 +605,89 @@ ggplot(res_mu) + geom_boxplot(aes(x = Method, y = MSE, fill = Method)) #+ scale_
 
 ##### PLOT OF RESULTS #### 
 
-### Boxplots
-# table_res = res5  %>% dplyr::select(Time_train, Time_pred, Setting) %>% group_by(Setting) %>%
+### Boxplots N 
+#
+#   res_plot = read_csv2('Simulations/Results/res_pred_N20-10_M20_TT.csv') %>% 
+#              mutate(Method = replace(Method, Method == 'Algo', 'MTGP'),
+#                     Method = replace(Method, Method == 'One GP', 'GP')) %>% 
+#              filter(N %in% c(5, 10, 15, 20))
+# 
+# plot = ggplot(res_plot) + geom_boxplot(aes(x = as.factor(N), y = MSE, fill = Method)) + 
+# coord_cartesian(ylim = c(0,540)) + xlab('N') + theme_classic()
+# 
+# ## 84mm width is standard format for springer 2 columns articles | 176mm for one column
+# tiff("Figure_5.tiff",res=600, compression = "lzw", height=120, width=168, units="mm") 
+# plot
+#  #grid.arrange(gg1, gg2, ncol = 2)
+# dev.off()
+
+#
+### Boxplots M
+#
+# table_res = res  %>% dplyr::select(Time_train, Time_pred, Setting) %>% group_by(Setting) %>%
 #    summarise_all(list('Mean' = mean, 'SD' = sd), na.rm = TRUE) %>% mutate_if(is.numeric, round, 1) %>% 
 #    mutate(Train = paste0(Time_train_Mean,' (', Time_train_SD, ')'), Pred = paste0(Time_pred_Mean,' (', Time_pred_SD, ')')) %>%
 #   dplyr::select(Setting, Train, Pred) 
 #
-# res_plot1 = read_csv2("Simulations/Results/res_pred_N20-10_M0to20_TT.csv") 
-# res_plot2 = read_csv2("Simulations/Results/res_pred_N20-10_M50to200_TT.csv") 
+# pred_plot1 = read_csv2("Simulations/Results/res_pred_N20-10_M0to20_TT.csv")
+# pred_plot2 = read_csv2("Simulations/Results/res_pred_N20-10_M50to200_TT.csv")
 # 
-# res_plot = rbind(res_plot1, res_plot2) %>% mutate(M = M -1)  %>% 
+# pred_plot = rbind(res_plot1, res_plot2) %>% mutate(M = M - 1)  %>%
 #            mutate(Method = replace(Method, Method == 'Algo', 'MTGP'),
-#                   Method = replace(Method, Method == 'One GP', 'GP'))
+#                   Method = replace(Method, Method == 'One GP', 'GP')) %>% 
+#            filter(M %in% c(5, 20, 50, 200))
 # 
-# table_res = res_plot %>% group_by(Method, M) %>%
-#   summarise_all(list('Mean' = mean, 'SD' = sd), na.rm = TRUE) %>% mutate_if(is.numeric, round, 1)
-
-# write_csv2(table_res, 'Simulations/Table/table_pred_FF.csv')
+# mu_plot1 = read_csv2("Simulations/Results/res_mu_N20-10_M0to20_TT.csv")
+# mu_plot2 = read_csv2("Simulations/Results/res_mu_N20-10_M50to200_TT.csv")
 # 
-# ggplot(res_plot) + geom_boxplot(aes(x = as.factor(N), y = MSE, fill = Method)) 
-# ggplot(res_plot) + geom_boxplot(aes(x = as.factor(M), y = MSE, fill = Method)) +
-#   facet_wrap( ~ M, scales="free") +
-#   coord_cartesian(ylim = c(0,200)) + 
-#   xlab('M')
+# mu_plot = rbind(mu_plot1, mu_plot2) %>% mutate(M = M - 1)  %>%
+#           mutate(Method = replace(Method, Method == 'Algo', 'MTGP')) %>% 
+#           filter(M %in% c(5, 20, 50, 200))
+# 
+# gg1 = ggplot(pred_plot) + geom_boxplot(aes(x = as.factor(M), y = MSE, fill = Method)) +
+#       #facet_wrap( ~ M, scales="free") +
+#       coord_cartesian(ylim = c(0,160)) + xlab('M') + theme_classic()
+# 
+# gg2 = ggplot(mu_plot) + geom_boxplot(aes(x = as.factor(M), y = MSE, fill = Method)) +
+#       #facet_wrap( ~ M, scales="free") +
+#       coord_cartesian(ylim = c(0,18)) + xlab('M') + theme_classic() +
+#       scale_fill_manual(values = c('#00BA38', '#619CFF'))
+# 
+# # 84mm width is standard format for springer 2 columns articles | 176mm for one column. We double it for lisibility
+# tiff("Figure_2.tiff",res=600, compression = "lzw", height=120, width= 352, units="mm")
+# grid.arrange(gg1, gg2, ncol = 2)
+# dev.off()
 
 ### Plot illustatives examples
 # train = readRDS('Simulations/Training/train_FT.rds')
 # 
-# db = tableFT %>% filter(ID_dataset == 42)
-# hp = train$'42'$algo$hp
+# db = tableFT %>% filter(ID_dataset == 32)
+# hp = train$'32'$algo$hp
 # db_train = db %>% filter(ID %notin% as.character(c(0,1)))
 # mean =  db %>% filter(ID == "0")
 # db_obs = db %>% filter(ID == "1")
 # 
-# pred = full_algo(db_train, db_obs[1:20,], seq(0,10, 0.01), kernel, common_hp = T, plot = F, prior_mean = 0,
+# pred = full_algo(db_train, db_obs[1:20,], seq(0,11.5, 0.01), kernel, common_hp = T, plot = F, prior_mean = 0,
 #                  kernel_mu, list_hp = hp , mu = NULL, ini_hp = ini_hp, hp_new_i = NULL)
 # 
-# plot_gp(pred$Prediction, data = db_obs, data_train = db_train, mean = pred$Mean_process$pred_GP, mean_CI = F) +
-#   guides( color = FALSE) + geom_point(data = db_obs[21:30,], aes(Timestamp, Output), color ='blue') +
-#   scale_y_continuous(limits = c(-20, 38))
+# ex_mtgp = plot_gp(pred$Prediction, data = db_obs, data_train = NULL, mean = pred$Mean_process$pred_GP, mean_CI = F) +
+#    geom_point(data = db_train, aes(Timestamp, Output, color = ID),  size = 0.4, alpha = 0.5) +
+#    guides(color = FALSE) + geom_point(data = db_obs[21:30,], aes(Timestamp, Output), color ='red') +
+#    scale_y_continuous(limits = c(-18, 38)) + theme_classic()
+#
+# hp_one = train_new_gp(db_obs[1:20,], 0, 0, ini_hp$theta_i, kernel)
+# pred_one = pred_gp(db_obs[1:20,], timestamps = seq(0,11.5, 0.01), mean_mu = 0, cov_mu = NULL,
+#                               kern = kernel, theta = hp_one$theta, sigma = hp_one$sigma )
+# ex_gp = plot_gp(pred_one, data = db_obs) + geom_point(data = db_obs[21:30,], aes(Timestamp, Output), color ='red') +
+#   scale_y_continuous(limits = c(-18, 38)) + theme_classic()
+# 
+# # 84mm width is standard format for springer 2 columns articles | 176mm for one column
+# tiff("Figure_1.tiff",res=600, compression = "lzw", height=120, width= 352, units="mm")
+#  grid.arrange(ex_gp, ex_mtgp, ncol = 2)
+# dev.off()
 # 
 # plot_heat(pred$Prediction, data = db_obs, data_train = db_train, mean = pred$Mean_process$pred_GP,
-#           ygrid = seq(5, 40, 0.05), interactive = F, CI = T) + guides( color = FALSE)
-# 
-# hp_one = train_new_gp(db_obs[1:20,], 0, 0, ini_hp$theta_i, kernel)
-# pred_one = pred_gp(db_obs[1:20,], timestamps = seq(0,10, 0.01), mean_mu = 0, cov_mu = NULL,
-#                               kern = kernel, theta = hp_one$theta, sigma = hp_one$sigma )
-# plot_gp(pred_one, data = db_obs) + geom_point(data = db_obs[21:30,], aes(Timestamp, Output), color ='blue') +
-#   scale_y_continuous(limits = c(-20, 38))
+#           ygrid = seq(-20, 40, 0.05), interactive = F, CI = T) + guides( color = FALSE)
 
 ##### TESTS SIMU ####
 # bla_db = datasets_multi_N(rep = 10, M = 21, N = 30, G = seq(0, 10, 0.05), common_times = T,

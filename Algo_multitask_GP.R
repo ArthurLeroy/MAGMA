@@ -253,7 +253,8 @@ plot_gp = function(pred_gp, data = NULL, data_train = NULL, mean = NULL, mean_CI
                                          ymax = Mean +  1.96 * sqrt(Var)), alpha = 0.2) + ylab('Output')
       
   ## Display the raw data and/or mean (with or without its CI) if provided
-  if(!is.null(data_train)){gg = gg + geom_point(data = data_train, aes(x = Timestamp, y = Output, col = ID), shape = 4)}
+  if(!is.null(data_train)){gg = gg + geom_point(data = data_train, aes(x = Timestamp, y = Output, col = ID), 
+                                                size = 0.5, shape = 4)}
   if(!is.null(data)){gg = gg + geom_point(data = data, aes(x = Timestamp, y = Output), size = 2, shape = 18)}
   if(!is.null(mean)){gg = gg + geom_line(data = mean, aes(x = Timestamp, y = Mean), linetype = 'dashed')}
   if(mean_CI){gg = gg + geom_ribbon(data = mean, aes(x = Timestamp, ymin = Mean - 1.96 * sqrt(Var), 

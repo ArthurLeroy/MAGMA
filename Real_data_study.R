@@ -77,7 +77,7 @@ db_f = db %>% filter(Gender == 2) %>% dplyr::select(- Gender) %>% split_train(ra
 ### Few info on the databases
 
 ## Number of individual in the db 
-db_m$ID %>% n_distinct  
+db_m$ID %>% n_distinct
 db_f$ID %>% n_distinct
 
 ## Number of different timestamps in the db 
@@ -142,30 +142,63 @@ res_test = db_test$ID %>% unique() %>% lapply(floop)
 db_res = do.call('rbind', res_test)
 db_res %>% select(-ID) %>% group_by(Method) %>% summarise_all(list('Mean' = mean, 'SD' = sd), na.rm = TRUE)
 
-#write.csv2('Simulations/Results/res_pred_women_100FS_Ni_15.csv', row.names=FALSE)
+#write_csv2(db_res, 'Simulations/Results/res_pred_women_100FS_Ni_15.csv', row.names=FALSE)
+
+res = read_csv2('Simulations/Results/res_pred_women_100FS_Ni_15.csv')
 
 ### Test on an individual 
-indiv = 'LAUMOND Émilie 22/02/2000'
 
-pred_example = full_algo(db_train,(db_test %>% filter(ID == indiv))[1:4,] , seq(10, 20, 0.01), kernel,
-                         common_hp = T, plot = F, prior_mean = 0, kernel, list_hp = model_train$hp, mu = NULL, 
-                         ini_hp = ini_hp, hp_new_i = NULL)
-indiv = unique(db_test$ID)[99]
-db_obs = (db_test %>% filter(ID == indiv))
+## Male
+indiv_h = unique(db_test$ID)[38]
+db_obs = (db_test %>% filter(ID == indiv_h))
+plot_db(db_obs) + guides(color = FALSE)
 
-post_mu = posterior_mu(db_train, db_obs[1:6,], seq(10, 20, 0.01), 0, kernel_mu, kernel, model_train$hp)
+post_mu = posterior_mu(db_train, db_obs[1:15,], seq(10, 20, 0.1), 0, kernel_mu, kernel, model_train$hp)
 
-pred_example = full_algo(db_train, db_obs[1:6,], seq(10, 20, 0.01), kernel,
+pred_example = full_algo(db_train, db_obs[1:15,], seq(10, 20, 0.1), kernel,
                          common_hp = T, plot = F, prior_mean = 0, kernel, list_hp = model_train$hp, mu = post_mu,
                          ini_hp = ini_hp, hp_new_i = NULL)
 
-plot_gp(pred_example$Prediction, data_train = db_train %>% filter(ID %in% unique(db_train$ID)[1:50]), data = db_test %>% filter(ID == indiv),
-        mean = pred_example$Mean_process$pred_GP) + guides(color = FALSE) + 
-  geom_point(data = db_obs[6:nrow(db_obs),], aes(Timestamp, Output), color ='blue') 
+real_mtgp_h = plot_gp(pred_example$Prediction, data = db_obs, mean = pred_example$Mean_process$pred_GP) + guides(color = FALSE) + 
+              geom_point(data = db_obs[16:nrow(db_obs),], aes(Timestamp, Output), color ='red') + theme_classic() + 
+              geom_point(data = db_train %>% filter(ID %in% unique(db_train$ID)[1:20]),
+              aes(Timestamp, Output, color = ID),  size = 0.4, alpha = 0.5)
 
-hp_one_gp = train_new_gp((db_test %>% filter(ID == indiv))[1:4,], 0, 0, ini_hp$theta_i, kernel)
-pred_gp((db_test %>% filter(ID == indiv))[1:4,], timestamps =  seq(10, 20, 0.01), mean_mu = 0, cov_mu = NULL, 
-            kern = kernel, theta = hp_one_gp$theta, sigma = hp_one_gp$sigma) %>% 
-       plot_gp(data_train = db_train, data = db_test %>% filter(ID == indiv),
-          mean = pred_example$Mean_process$pred_GP) + guides(color = FALSE)
-  
+hp_one_gp = train_new_gp(db_obs[1:15,], 0, 0, ini_hp$theta_i, kernel)
+real_gp_h = pred_gp(db_obs[1:15,], timestamps =  seq(10, 20, 0.01), mean_mu = 0, cov_mu = NULL, 
+                    kern = kernel, theta = hp_one_gp$theta, sigma = hp_one_gp$sigma) %>% 
+            plot_gp(data = db_obs[1:15,]) + guides(color = FALSE) +
+            geom_point(data = db_obs[16:nrow(db_obs),], aes(Timestamp, Output), color ='red') + theme_classic()  
+
+grid.arrange(real_gp_h, real_mtgp_h,  ncol = 2)
+
+## Female
+# 
+# indiv = unique(db_test$ID)[90]
+# db_obs = (db_test %>% filter(ID == indiv))
+# plot_db(db_obs) + guides(color = FALSE)
+# 
+# post_mu = posterior_mu(db_train, db_obs[1:15,], seq(10, 20, 0.01), 0, kernel_mu, kernel, model_train$hp)
+# 
+# pred_example = full_algo(db_train, db_obs[1:15,], seq(10, 20, 0.01), kernel,
+#                          common_hp = T, plot = F, prior_mean = 0, kernel, list_hp = model_train$hp, mu = post_mu,
+#                          ini_hp = ini_hp, hp_new_i = NULL)
+# 
+# real_mtgp_f = plot_gp(pred_example$Prediction, data = db_obs, mean = pred_example$Mean_process$pred_GP) + guides(color = FALSE) + 
+#             geom_point(data = db_obs[16:nrow(db_obs),], aes(Timestamp, Output), color ='red') + theme_classic() + 
+#             geom_point(data = db_train %>% filter(ID %in% unique(db_train$ID)[1:20]),
+#                        aes(Timestamp, Output, color = ID),  size = 0.4, alpha = 0.5)
+# 
+# hp_one_gp = train_new_gp(db_obs[1:15,], 0, 0, ini_hp$theta_i, kernel)
+# real_gp_f = pred_gp(db_obs[1:15,], timestamps =  seq(10, 20, 0.01), mean_mu = 0, cov_mu = NULL, 
+#             kern = kernel, theta = hp_one_gp$theta, sigma = hp_one_gp$sigma) %>% 
+#             plot_gp(data = db_obs[1:15,]) + guides(color = FALSE) +
+#             geom_point(data = db_obs[16:nrow(db_obs),], aes(Timestamp, Output), color ='red') + theme_classic()  
+#   
+# 84mm width is standard format for springer 2 columns articles | 176mm for one column
+# tiff("Figure_4_bis.tiff",res=600, compression = "lzw", height=220, width= 352, units="mm")
+#  grid.arrange(real_gp_f, real_mtgp_f, real_gp_h, real_mtgp_h,  ncol = 2, nrow = 2)
+# dev.off()
+
+bla = read_csv2('Simulations/results/res_pred_swimming_dataset_100mFS_men.csv')
+bla %>% select(-ID) %>%  group_by(Method) %>% summarise_all(list('Mean' = mean, 'SD' = sd), na.rm = TRUE)
