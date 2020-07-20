@@ -9,6 +9,6 @@ The file 'Computing_functions.R' contains the code of many useful functions used
 The file 'MAGMA.R' contains the core of the code for the MAGMA algorithm. Fonctions implementing the learning, hyperposterior computing, and prediction steps are provided.
 Several ploting function and testing examples are provided as well. 
 
-Corresponding author and main contributor to the code: 
-Arthur Leroy
+Corresponding author and main contributor to the code:  
+Arthur Leroy  
 arthur.leroy.pro@gmail.com
