@@ -9,8 +9,6 @@ library(transformr)
 library(gifski)
 library(png)
 
-
-#setwd(dir = 'C:/Users/user/CloudStation/Maths/These/Processus Gaussiens/Code R/Algo multitask GP')
 source('Computing_functions.R')
 
 ##### TRAINING FUNCTIONS ################## 
@@ -114,7 +112,7 @@ posterior_mu = function(db, new_db, timestamps, m_0, kern_0, kern_i, hp)
   ## return : pamameters of the mean GP at timestamps
   t_pred = timestamps %>% union(unique(db$Timestamp)) %>% union(unique(new_db$Timestamp)) %>% sort()
   ## Mean GP (mu_0) is noiseless and thus has only 2 hp. We add a penalty on diag for numerical stability
-  pen_diag = 0.1#sapply(hp$theta_i, function(x) x[[3]]) %>% mean
+  pen_diag = 0.1 #sapply(hp$theta_i, function(x) x[[3]]) %>% mean
 
   inv_0 = kern_to_inv(t_pred, kern_0, hp$theta_0, sigma = pen_diag)
   inv_i = kern_to_inv(db, kern_i, hp$theta_i, sigma = 0)
@@ -184,6 +182,7 @@ pred_gp = function(db, timestamps = NULL, mean_mu = 0, cov_mu = NULL,
 pred_gp_animate = function(db, timestamps = NULL, mean_mu = 0, cov_mu = NULL, 
                            kern = kernel, theta = list(1,0.2), sigma = 0.2)
 {
+  #### Function used to generate data compatible with a GIF ploting of the results
   ## Inputs : same as for a classic GP prediction
   ####
   ## return : tibble of classic GP predictions but with an inscreasing number of data points considered as 'observed'
@@ -245,6 +244,9 @@ full_algo = function(db, new_db, timestamps, kern_i, common_hp = T, plot = T, pr
 plot_gp = function(pred_gp, data = NULL, data_train = NULL, mean = NULL, mean_CI = F)
 { ## pred_gp : tibble coming out of the pred_gp() function, columns required : 'Timestamp', 'Mean', 'Var'
   ## data : tibble of observational data, columns required : 'Timestamp', 'Output' (Optional)
+  ## data_train : tibble of training data, columns required : 'ID', Timestamp', 'Output' (Optional)
+  ## mean : tibble of estimated value for the mean process, columns required : 'Timestamp', 'Mean' (Optional)
+  ## mean_CI : boolean indicating whether the mean curve should be displayed along with CI95 band or not (Optional)
   ####
   ## return : plot the predicted curve of the GP with the 0.95 confidence interval (optional display raw data)
   gg = ggplot() +
@@ -308,10 +310,13 @@ plot_heat =  function(pred_gp, data = NULL, data_train = NULL, mean = NULL, ygri
 }
 
 plot_animate = function(pred_gp, data = NULL, data_train = NULL, mean = NULL, mean_CI = F, file = "gganim.gif")
-{ ## pred_gp : tibble coming out of the pred_gp_animate() function, columns required : 'Timestamp', 'Mean', 'Var'
+{ ## pred_gp : tibble coming out of the pred_gp() function, columns required : 'Timestamp', 'Mean', 'Var'
   ## data : tibble of observational data, columns required : 'Timestamp', 'Output' (Optional)
+  ## data_train : tibble of training data, columns required : 'ID', Timestamp', 'Output' (Optional)
+  ## mean : tibble of estimated value for the mean process, columns required : 'Timestamp', 'Mean' (Optional)
+  ## mean_CI : boolean indicating whether the mean curve should be displayed along with CI95 band or not (Optional)
   ####
-  ## return : plot the animated curves of the GP with the 0.95 confidence interval (optional display raw data)
+  ## return : plot the animated curves of the GP (GIF) with the 0.95 confidence interval (optional display raw data)
 
   gg = plot_gp(pred_gp, data, data_train, mean, mean_CI)  +
        transition_states(Nb_data, transition_length = 2, state_length = 1)
