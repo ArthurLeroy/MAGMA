@@ -12,7 +12,7 @@ dmvnorm <- function (x, mu, inv_Sigma, log = FALSE, tol = 1e-06)
     x = t(as.matrix(x))
   n = length(mu)
   if (is.vector(mu)) {
-    p <- length(mu)
+    p <- length(mu) 
     if (is.matrix(x)) {
       mu <- matrix(rep(mu, nrow(x)), ncol = p, byrow = TRUE)
     }
