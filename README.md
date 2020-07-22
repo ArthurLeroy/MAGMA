@@ -1,4 +1,4 @@
-This repository contains the R code of the algorithm MAGMA, presented in the paper 'MAGMA: Inference and Prediction with Multi-Task Gaussian Processes' by Leroy et al.
+This repository contains the R code of the algorithm MAGMA, presented in the paper 'MAGMA: Inference and Prediction with Multi-Task Gaussian Processes' by Leroy, Latouche, Guedj and Gey (https://arxiv.org/abs/2007.10731). If you are considering citing this work, you are welcome to use the file `reference.bib`.
 
 The folder 'Simulations' contains the synthetic datasets, used for the experimental study in the paper, as well as the corresponding trained models and tables of results.
 
