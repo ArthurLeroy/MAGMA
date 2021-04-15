@@ -1,4 +1,4 @@
-source('Algo_multitask_GP.R')
+source('MAGMA.R')
 
 library(GPFDA)
 library(parallel)
