@@ -2,7 +2,7 @@ library(tidyverse)
 library(MASS)
 library(Matrix)
 library(optimr)
-library(mvtnorm)
+library(mvtnorm) 
 library(plotly)
 library(gganimate)
 library(transformr)
@@ -35,7 +35,8 @@ training = function(db, prior_mean, ini_hp, kern_0, kern_i, common_hp = T)
     ## E-Step
     param = e_step(db, prior_mean, kern_0, kern_i, hp)   
     
-    list_plot[[i]] = param$pred_GP %>% plot_gp(data_train = db)
+    ## For visualising successive values of \mu_0
+    #list_plot[[i]] = param$pred_GP %>% plot_gp(data_train = db) 
     ## Return list_plot if you want monitoring graphs of the mean process' learning
 
     ## M-Step
@@ -346,7 +347,7 @@ simu_indiv_test = function(ID, t, kern = kernel_mu, theta, mean, var)
 }
 
 set.seed(46)
-M = 2
+M = 10
 N = 10
 t = matrix(0, ncol = N, nrow = M)
 for(i in 1:M){t[i,] = sample(seq(10, 20, 0.05),N, replace = F) %>% sort()}

@@ -45,7 +45,7 @@ kernel = function(mat, theta = c(1, 0.5))
   ####
   ## return : the value of dot production <f(t1),f(t2)> computed from the kernel
   
-  exp(theta[[1]] - exp(-theta[[2]])/2 * mat) %>% return()
+  exp(theta[[1]]  - exp(-theta[[2]])/2 * mat) %>% return()
 }
 
 kernel_mu = function(mat, theta = c(1,0.5))
@@ -193,7 +193,7 @@ logL_GP_mod = function(hp, db, mean, kern, new_cov, pen_diag = NULL)
 
   inv =  kern_to_inv(db$Timestamp, kern, theta = hp[1:2], sigma) 
   
-  LL_norm = - dmvnorm(db$Output, mean, inv, log = T) ## classic gaussian loglikelihood
+  LL_norm = - dmvnorm(db$Output, mean, inv, log = T)  ## classic gaussian loglikelihood
   cor_term =  0.5 * (inv * new_cov) %>% sum() ## correction term (0.5 * Trace(inv %*% new_cov))
   t2 = Sys.time()
   #print(paste0('LogL_0 iteration ', t2 - t1))
