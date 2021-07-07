@@ -2,7 +2,7 @@ library(tidyverse)
 library(MASS)
 library(Matrix)
 library(optimr)
-library(mvtnorm) 
+library(mvtnorm)
 library(plotly)
 library(gganimate)
 library(transformr)
@@ -11,7 +11,7 @@ library(png)
 
 source('Computing_functions.R')
 
-##### TRAINING FUNCTIONS ################## 
+##### TRAINING FUNCTIONS ##################
 training = function(db, prior_mean, ini_hp, kern_0, kern_i, common_hp = T)
 { ## db : database with all individuals in training set. Column required : 'ID', Timestamp', 'Output'
   ## prior_mean : prior mean parameter of the mean GP (mu_0)
@@ -23,25 +23,25 @@ training = function(db, prior_mean, ini_hp, kern_0, kern_i, common_hp = T)
   n_loop_max = 25
   db$ID = db$ID %>% as.character
   list_ID = unique(db$ID)
-  hp = list('theta_0' = ini_hp$theta_0, 
+  hp = list('theta_0' = ini_hp$theta_0,
             'theta_i' = ini_hp$theta_i %>% list() %>% rep(length(list_ID))  %>% setNames(nm = list_ID))
   cv = FALSE
   logLL_monitoring = - Inf
   list_plot = list()
   t1 = Sys.time()
   for(i in 1:n_loop_max)
-  { 
+  {
     print(i)
     ## E-Step
-    param = e_step(db, prior_mean, kern_0, kern_i, hp)   
-    
+    param = e_step(db, prior_mean, kern_0, kern_i, hp)
+
     ## For visualising successive values of \mu_0
-    #list_plot[[i]] = param$pred_GP %>% plot_gp(data_train = db) 
+    #list_plot[[i]] = param$pred_GP %>% plot_gp(data_train = db)
     ## Return list_plot if you want monitoring graphs of the mean process' learning
 
     ## M-Step
     new_hp = m_step(db, hp, mean = param$mean, cov = param$cov, kern_0, kern_i, prior_mean, common_hp)
-     
+
     ## If something went wrong during the optimization
     if(new_hp %>% anyNA(recursive = T))
     {
@@ -49,9 +49,9 @@ training = function(db, prior_mean, ini_hp, kern_0, kern_i, common_hp = T)
       print('Training has stopped and the function returns values from the last valid iteration')
       break
     }
-  
+
     ## Monitoring of the LL
-    new_logLL_monitoring = logL_monitoring(hp, db, kern_i, kern_0, param$mean, param$cov, prior_mean) 
+    new_logLL_monitoring = logL_monitoring(hp, db, kern_i, kern_0, param$mean, param$cov, prior_mean)
                             # + 0.5 * log(det(param$cov)) for an exact likelihood but constant respectively to HPs
     paste0('logLL = ', new_logLL_monitoring) %>% print()
     diff_moni = new_logLL_monitoring - logLL_monitoring
@@ -59,7 +59,7 @@ training = function(db, prior_mean, ini_hp, kern_0, kern_i, common_hp = T)
 
     logL_new_hp = logL_monitoring(new_hp, db, kern_i, kern_0, param$mean, param$cov, prior_mean)
                   # + 0.5 * log(det(param$cov)) for an exact likelihood but constant respectively to HPs
-    
+
     ## Testing the stoping condition
     eps = (logL_new_hp - new_logLL_monitoring) / abs(logL_new_hp)
     paste0('eps = ', eps) %>% print()
@@ -69,30 +69,30 @@ training = function(db, prior_mean, ini_hp, kern_0, kern_i, common_hp = T)
       cv = TRUE
       break
     }
-    
-    ## Update HP values and loglikelihood monitoring 
+
+    ## Update HP values and loglikelihood monitoring
     hp = new_hp
     logLL_monitoring = new_logLL_monitoring
   }
   t2 = Sys.time()
   list('hp' = hp, 'convergence' = cv, 'param' = param,
-       'Time_train' =  difftime(t2, t1, units = "secs"), 
-       'plot' = list_plot) %>% 
+       'Time_train' =  difftime(t2, t1, units = "secs"),
+       'plot' = list_plot) %>%
   return()
 }
 
 train_new_gp = function(db, mean_mu, cov_mu, ini_hp_i, kern_i)
-{ 
-  if(is.vector(mean_mu)){mean = mean_mu} 
+{
+  if(is.vector(mean_mu)){mean = mean_mu}
   else {mean = mean_mu %>% filter(Timestamp %in% db$Timestamp) %>% pull(Output) %>% as.vector}
   if(length(mean) == 1){mean = rep(mean, length(db$Timestamp))}
-  
+
   if(is.matrix(cov_mu)){new_cov = cov_mu[paste0('X', db$Timestamp), paste0('X', db$Timestamp)]}
   else {new_cov = 0}
-  
+
    new_hp = opm(ini_hp_i, fn = logL_GP, gr = gr_GP, db = db, mean = mean, kern = kern_i, new_cov = new_cov,
-               method = "L-BFGS-B", control = list(kkt = FALSE)) 
-  
+               method = "L-BFGS-B", control = list(kkt = FALSE))
+
   ## If something went wrong during the optimization
   if(new_hp[1, 1:3] %>% anyNA())
   {
@@ -103,7 +103,7 @@ train_new_gp = function(db, mean_mu, cov_mu, ini_hp_i, kern_i)
   list('theta' = new_hp[1:2], 'sigma' = new_hp[[3]]) %>% return()
 }
 
-##### PREDICTION FUNCTIONS ################
+#### PREDICTION FUNCTIONS ################
 posterior_mu = function(db, new_db, timestamps, m_0, kern_0, kern_i, hp)
 { ## db : matrix of data columns required ('Timestamp', 'Output')
   ## timestamps : timestamps on which we want a prediction
@@ -126,13 +126,13 @@ posterior_mu = function(db, new_db, timestamps, m_0, kern_0, kern_i, hp)
 
   weighted_mean = update_mean(prior_mean = m_0, prior_inv = inv_0, list_inv_i = inv_i, list_value_i = value_i)
   new_mean = (new_cov %*% weighted_mean) %>% as.vector
-  
+
   #names(mean_mu) = paste0('X', t_mu)
-  list('mean' = tibble('Timestamp' = t_pred, 'Output' = new_mean) , 'cov' = new_cov, 
+  list('mean' = tibble('Timestamp' = t_pred, 'Output' = new_mean) , 'cov' = new_cov,
        'pred_GP' = tibble('Timestamp' = t_pred, 'Mean' = new_mean, 'Var' = diag(new_cov))) %>% return()
 }
 
-pred_gp = function(db, timestamps = NULL, mean_mu = 0, cov_mu = NULL, 
+pred_gp = function(db, timestamps = NULL, mean_mu = 0, cov_mu = NULL,
                    kern = kernel, theta = list(1,0.2), sigma = 0.2)
 { ## db: tibble of data columns required ('Timestamp', 'Output')
   ## timestamps : timestamps on which we want a prediction
@@ -142,19 +142,19 @@ pred_gp = function(db, timestamps = NULL, mean_mu = 0, cov_mu = NULL,
   ## theta : list of hyperparameters for the kernel of the GP
   ## sigma : variance of the error term of the models
   ####
-  ## return : pamameters of the gaussian density predicted at timestamps 
+  ## return : pamameters of the gaussian density predicted at timestamps
   tn = db %>% pull(Timestamp)
   #input = db %>% pull(Input)
   input = paste0('X', db$Timestamp)
   yn = db %>% pull(Output)
-  
+
   ## Define a default prediction grid
   if(is.null(timestamps)){timestamps = seq(min(tn), max(tn), length.out = 500)}
   input_t = paste0('X', timestamps)
   all_times = union(tn,timestamps)
-  
+
   if(is.null(cov_mu))
-  { ## Case of standard GP regression. Without trained posterior mean process. 
+  { ## Case of standard GP regression. Without trained posterior mean process.
     cov_mu = matrix(0, length(all_times), length(all_times),
                     dimnames = list(paste0('X', all_times), paste0('X', all_times)))
   }
@@ -168,9 +168,9 @@ pred_gp = function(db, timestamps = NULL, mean_mu = 0, cov_mu = NULL,
     mean_mu_obs = mean_mu %>%  filter(Timestamp %in% tn) %>% pull(Output)
     mean_mu_pred = mean_mu %>% filter(Timestamp %in% timestamps) %>% pull(Output)
   }
-  
+
   cov_tn_tn = kern_to_cov(tn, kern, theta, sigma) + cov_mu[input, input]
-  inv_mat = tryCatch(solve(cov_tn_tn), error = function(e){MASS::ginv(cov_tn_tn)}) 
+  inv_mat = tryCatch(solve(cov_tn_tn), error = function(e){MASS::ginv(cov_tn_tn)})
   cov_tn_t = kern(mat_dist(tn, timestamps), theta) + cov_mu[input,input_t]
 
   cov_t_t = kern_to_cov(timestamps, kern, theta, sigma) + cov_mu[input_t ,input_t]
@@ -180,7 +180,7 @@ pred_gp = function(db, timestamps = NULL, mean_mu = 0, cov_mu = NULL,
          'Var' = (cov_t_t - t(cov_tn_t) %*% inv_mat %*% cov_tn_t) %>% diag()) %>% return()
 }
 
-pred_gp_animate = function(db, timestamps = NULL, mean_mu = 0, cov_mu = NULL, 
+pred_gp_animate = function(db, timestamps = NULL, mean_mu = 0, cov_mu = NULL,
                            kern = kernel, theta = list(1,0.2), sigma = 0.2)
 {
   #### Function used to generate data compatible with a GIF ploting of the results
@@ -191,7 +191,7 @@ pred_gp_animate = function(db, timestamps = NULL, mean_mu = 0, cov_mu = NULL,
   all_pred = tibble()
 
   if(is.null(timestamps)){timestamps = seq(min(db$Timestamp), max(db$Timestamp), length.out = 500)}
-  
+
   for(j in 1:nrow(db))
   {
     pred_j = pred_gp(db[1:j,], timestamps, mean_mu, cov_mu, kern = kernel, theta, sigma) %>% mutate(Nb_data = j)
@@ -212,32 +212,32 @@ full_algo = function(db, new_db, timestamps, kern_i, common_hp = T, plot = T, pr
   ## list_hp : Hyper-parameters for all individuals in training set. Optional, computed if NULL.
   ## mu : Database containing parameters of the mean GP at all prediction timestamps. Optional, computed if NULL.
   ## ini_hp : Initial values of the HP to start the training. Optional, not needed if 'list_hp' is given.
-  ## hp_new_i : Hyper-pameters for the new individual to predict. Optional, computed if NULL. 
+  ## hp_new_i : Hyper-pameters for the new individual to predict. Optional, computed if NULL.
   ####
   ## return : predicted GP parameters | posterior mean process | all trained hyperparameters
-  
+
   ## If hp are not provided, train the model
   if(is.null(list_hp)){list_hp = training(db, prior_mean, ini_hp, kern_0, kern_i, common_hp)$hp}
-  
+
   ## If mean GP (mu_0) paramaters at prediction timestamps are not provided , compute them
   if(is.null(mu)){mu = posterior_mu(db, new_db, timestamps, prior_mean, kern_0, kern_i, list_hp)}
-  
+
   ## If hyperparameters of the GP for the new individuals are not provided, learn them
   ## If hyperparameters are common across individuals by hypothesis, simply pick them up from the trained model
-  if(is.null(hp_new_i) & common_hp){hp_new_i = list('theta' = list_hp$theta_i[[1]][1:2], 
+  if(is.null(hp_new_i) & common_hp){hp_new_i = list('theta' = list_hp$theta_i[[1]][1:2],
                                                     'sigma' = list_hp$theta_i[[1]][[3]])}
   else if(is.null(hp_new_i)){hp_new_i = train_new_gp(new_db, mu$mean, mu$cov, ini_hp$theta_i, kern_i)}
-  
+
   pred = pred_gp(new_db, timestamps, mean_mu = mu$mean, cov_mu = mu$cov, kern_i, hp_new_i$theta, hp_new_i$sigma)
-  
-  ## If True, display a plot of the resulting GP prediction 
+
+  ## If True, display a plot of the resulting GP prediction
   if(plot)
   {
-    (plot_gp(pred, data = new_db, data_train = db) + 
+    (plot_gp(pred, data = new_db, data_train = db) +
        geom_line(data = mu$pred_GP, aes(x = Timestamp, y = Mean), color = 'black', linetype = 'dashed')) %>% print()
-  }  
-  
-  list('Prediction' = pred, 'Mean_process' = mu, 'Hyperparameters' = list('other_i' = list_hp, 'new_i' = hp_new_i)) %>% 
+  }
+
+  list('Prediction' = pred, 'Mean_process' = mu, 'Hyperparameters' = list('other_i' = list_hp, 'new_i' = hp_new_i)) %>%
     return()
 }
 
@@ -252,17 +252,17 @@ plot_gp = function(pred_gp, data = NULL, data_train = NULL, mean = NULL, mean_CI
   ## return : plot the predicted curve of the GP with the 0.95 confidence interval (optional display raw data)
   gg = ggplot() +
          geom_line(data = pred_gp, aes(x = Timestamp, y = Mean), color = 'blue') +
-         geom_ribbon(data = pred_gp, aes(x = Timestamp, ymin = Mean - 1.96 * sqrt(Var), 
+         geom_ribbon(data = pred_gp, aes(x = Timestamp, ymin = Mean - 1.96 * sqrt(Var),
                                          ymax = Mean +  1.96 * sqrt(Var)), alpha = 0.2) + ylab('Output')
-      
+
   ## Display the raw data and/or mean (with or without its CI) if provided
-  if(!is.null(data_train)){gg = gg + geom_point(data = data_train, aes(x = Timestamp, y = Output, col = ID), 
+  if(!is.null(data_train)){gg = gg + geom_point(data = data_train, aes(x = Timestamp, y = Output, col = ID),
                                                 size = 0.5, shape = 4)}
   if(!is.null(data)){gg = gg + geom_point(data = data, aes(x = Timestamp, y = Output), size = 2, shape = 18)}
   if(!is.null(mean)){gg = gg + geom_line(data = mean, aes(x = Timestamp, y = Mean), linetype = 'dashed')}
-  if(mean_CI){gg = gg + geom_ribbon(data = mean, aes(x = Timestamp, ymin = Mean - 1.96 * sqrt(Var), 
+  if(mean_CI){gg = gg + geom_ribbon(data = mean, aes(x = Timestamp, ymin = Mean - 1.96 * sqrt(Var),
                                            ymax = Mean +  1.96 * sqrt(Var)), alpha = 0.4)}
-  
+
   return(gg)
 }
 
@@ -286,17 +286,17 @@ plot_heat =  function(pred_gp, data = NULL, data_train = NULL, mean = NULL, ygri
                                  max(pred_gp$Mean) + 2 * sqrt(max(pred_gp$Var)), 0.1)}
   if(CI)
   {
-    db_heat = tidyr::expand(pred_gp, nesting(Timestamp, Mean, Var), Ygrid = ygrid) %>% 
-              mutate(Proba = 2 * pnorm(abs((Ygrid - Mean)/ sqrt(Var))) - 1) 
+    db_heat = tidyr::expand(pred_gp, nesting(Timestamp, Mean, Var), Ygrid = ygrid) %>%
+              mutate(Proba = 2 * pnorm(abs((Ygrid - Mean)/ sqrt(Var))) - 1)
     gg = ggplot(db_heat) + geom_tile(aes(Timestamp, Ygrid, fill = Proba)) + scale_fill_distiller(palette = "RdPu") +
       theme_minimal() + ylab("Output") + labs(fill = "Proba CI")
   }
   else
   {
-    db_heat = tidyr::expand(pred_gp, nesting(Timestamp, Mean, Var), Ygrid = ygrid) %>% 
-              mutate(Proba = dnorm(Ygrid, mean = Mean, sd = sqrt(Var)) ) 
-    gg = ggplot(db_heat) + geom_tile(aes(Timestamp, Ygrid, fill = Proba)) + 
-         scale_fill_distiller(palette = "RdPu", trans = "reverse") + 
+    db_heat = tidyr::expand(pred_gp, nesting(Timestamp, Mean, Var), Ygrid = ygrid) %>%
+              mutate(Proba = dnorm(Ygrid, mean = Mean, sd = sqrt(Var)) )
+    gg = ggplot(db_heat) + geom_tile(aes(Timestamp, Ygrid, fill = Proba)) +
+         scale_fill_distiller(palette = "RdPu", trans = "reverse") +
          theme_minimal() + ylab("Output") + labs(fill = "Likelihood")
   }
   ## Display data/training data/mean process if provided
@@ -306,7 +306,7 @@ plot_heat =  function(pred_gp, data = NULL, data_train = NULL, mean = NULL, ygri
 
   ## Turn into an interactive plotly (html plot)
   if(interactive){gg = ggplotly(gg)}
-  
+
   return(gg)
 }
 
@@ -339,7 +339,7 @@ simu_indiv_test = function(ID, t, kern = kernel_mu, theta, mean, var)
   # indiv = tibble('ID' = rep(as.character(ID), nb), 'Timestamp' = t, 'Input' = paste0('X', t),
   #                'Output' = a*t + b + rnorm(nb,0,var),'a' = rep(runif(1,0,5) %>% round(2), nb),
   #                'b' = rep(runif(1,0,0.5) %>% round(2), nb))
-  
+
   db = tibble('ID' = ID,
               'Timestamp' = t,
               'Output' = rmvnorm(1, rep(mean,length(t)), kern_to_cov(t, kern, theta, sigma = var)) %>% as.vector())
@@ -392,12 +392,12 @@ m_0 = 0
 # fu = bla$param$mean$Output
 # names(fu) = paste0('X', bla$param$mean$Timestamp)
 # timestamps = seq(10,20, 0.01)
-# post_mu = posterior_mu(db_train, timestamps, m_0 = 40, 
+# post_mu = posterior_mu(db_train, timestamps, m_0 = 40,
 #                        kernel_mu, kernel, list('theta_0' = bla$theta_0, 'theta_i' = bla$theta_i))
-# 
+#
 # hp_pred = list('theta' = bla$theta_i[['1']][1:2], 'sigma' =  bla$theta_i[['1']][[3]])
 # if(!common_hp) hp_pred = train_new_gp(db_obs, post_mu$mean, post_mu$cov, ini_hp$theta_i, kernel)
-# 
+#
 # pred_gp(db_obs[1:3,], timestamps = timestamps, mean_mu = post_mu$mean,
 #         cov_mu = post_mu$cov, theta = hp_pred$theta, sigma = hp_pred$sigma) %>%
 #   plot_gp(data = rbind(db_obs[1:10,], db_train)) + geom_point(aes(post_mu$mean$Timestamp, post_mu$mean$Output))
@@ -409,16 +409,16 @@ m_0 = 0
 #   grid_t = c(i,1:100)
 #   list_invi = kern_to_inv(db_train, theta = param_test$theta_i, sigma = 0)
 #   list_valuei = list()
-# 
+#
 #   for(i in unique(db_train$ID)){list_valuei[[i]] =  db_train %>% filter(ID == i) %>% pull(Output)}
 #   upinv = update_inv(kern_to_inv(grid_t, theta = c(2, 1), sigma = 0.2), list_invi)
 #   upcov = upinv %>% solve()
 #   upmean = (upinv %>% solve()) %*% update_mean(40, kern_to_inv(grid_t, theta = c(2, 1), sigma = 0.2), list_invi , list_valuei)
-# 
+#
 #   pred = rbind(pred, pred_gp(data = db_obs %>% filter(Timestamp %in% c(1:40)), timestamps = grid_t, mean_mu = upmean,
 #                              cov_mu = upcov, kern = kernel, theta = list(2, 1), sigma = 0.2)[1,])
 # }
-# 
+#
 # plot_gp(pred, data = rbind(db_obs, db_train))
 #
 ### Creating Heatmaps and GIF
