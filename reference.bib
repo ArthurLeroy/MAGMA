@@ -1,11 +1,11 @@
-@unpublished{leroy2020magma,
-    title={MAGMA: Inference and Prediction with Multi-Task Gaussian Processes},
-    author={Arthur Leroy and Pierre Latouche and Benjamin Guedj and Servane Gey},
-    year={2020},
-    eprint={2007.10731},
-    archivePrefix={arXiv},
-    primaryClass={stat.CO},
-    url = {https://arxiv.org/abs/2007.10731},
-    url_PDF = {https://arxiv.org/pdf/2007.10731.pdf},
-    url_Software = {https://github.com/ArthurLeroy/MAGMA}
+@article{LeroyMAGMAinferenceprediction2022,
+  title = {{{MAGMA}}: Inference and Prediction Using Multi-Task {{Gaussian}} Processes with Common Mean},
+  author = {Leroy, Arthur and Latouche, Pierre and Guedj, Benjamin and Gey, Servane},
+  year = {2022},
+  month = may,
+  journal = {Machine Learning},
+  issn = {1573-0565},
+  doi = {10.1007/s10994-022-06172-1},
+  abstract = {A novel multi-task Gaussian process (GP) framework is proposed, by using a common mean process for sharing information across tasks. In particular, we investigate the problem of time series forecasting, with the objective to improve multiple-step-ahead predictions. The common mean process is defined as a GP for which the hyper-posterior distribution is tractable. Therefore an EM algorithm is derived for handling both hyper-parameters optimisation and hyper-posterior computation. Unlike previous approaches in the literature, the model fully accounts for uncertainty and can handle irregular grids of observations while maintaining explicit formulations, by modelling the mean process in a unified GP framework. Predictive analytical equations are provided, integrating information shared across tasks through a relevant prior mean. This approach greatly improves the predictive performances, even far from observations, and may reduce significantly the computational complexity compared to traditional multi-task GP models. Our overall algorithm is called Magma (standing for Multi tAsk GPs with common MeAn). The quality of the mean process estimation, predictive performances, and comparisons to alternatives are assessed in various simulated scenarios and on real datasets.},
+  copyright = {All rights reserved}
 }
